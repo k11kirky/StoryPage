@@ -6,6 +6,8 @@ export interface ContentfulConfig {
   /** Environment or alias id that readers use (normally the `master` alias). */
   environment: string;
   locale: string;
+  /** Overrides client creation (tests, or reusing a configured client). */
+  clientFor?: ((environmentId: string) => PlainClientAPI) | undefined;
 }
 
 export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ContentfulConfig {
@@ -23,6 +25,7 @@ export function configFromEnv(env: NodeJS.ProcessEnv = process.env): ContentfulC
 }
 
 export function createContentfulClient(config: ContentfulConfig, environmentId = config.environment): PlainClientAPI {
+  if (config.clientFor) return config.clientFor(environmentId);
   return createClient(
     { accessToken: config.managementToken, application: "storypage/0.1" },
     { type: "plain", defaults: { spaceId: config.spaceId, environmentId } },

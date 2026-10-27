@@ -1,0 +1,24 @@
+{
+  "name": "@storypage/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke:storybook": "tsx scripts/smoke-storybook.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.311",
+    "@contentful/mcp-server": "1.24.0",
+    "@storybook/mcp": "10.6.4",
+    "@storypage/contentful": "workspace:*",
+    "@storypage/schema": "workspace:*",
+    "figma-developer-mcp": "0.13.2",
+    "playwright-core": "~1.63.0",
+    "zod": "^4.1.0"
+  }
+}

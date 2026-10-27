@@ -1,7 +1,7 @@
 import type { KnownBlock } from "@slack/types";
 import { entryEditorUrl } from "@storypage/contentful";
+import { previewUrl } from "@storypage/agents";
 import type { Draft } from "./conversations.js";
-import { previewUrl } from "./release.js";
 
 export const PUBLISH_ACTION = "storypage_publish";
 

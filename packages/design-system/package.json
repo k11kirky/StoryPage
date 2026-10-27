@@ -33,6 +33,7 @@
     "jsdom": "^26.1.0",
     "storybook": "^10.6.4",
     "vite": "^7.1.0",
-    "@types/semver": "^7.7.0"
+    "@types/semver": "^7.7.0",
+    "@storybook/addon-mcp": "^10.6.4"
   }
 }

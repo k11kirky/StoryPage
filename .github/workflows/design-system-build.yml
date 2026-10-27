@@ -1,6 +1,7 @@
 # Stage 2: a designer published from Figma. The gateway committed the manifest
-# to design-system/v<version> and sent this dispatch. A Claude agent builds the
-# components in Storybook, and the result is opened as a PR for human review.
+# to design-system/v<version> and sent this dispatch. Agents build the
+# components (Figma + Storybook MCP), an independent agent reviews them against
+# Figma, and the result is opened as a PR for human review.
 name: Design system build
 
 on:
@@ -40,17 +41,23 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      - name: Build components with Claude
+      - name: Install Chromium for story screenshots
+        run: pnpm --filter @storypage/agents exec playwright-core install --with-deps chromium
+
+      - name: Build and review with agents
         id: agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Figma MCP (Framelink) reads the published file; without it agents use the manifest only.
+          FIGMA_API_KEY: ${{ secrets.FIGMA_API_KEY }}
           STORYPAGE_AGENT_MAX_BUDGET_USD: ${{ vars.STORYPAGE_AGENT_MAX_BUDGET_USD || '25' }}
         run: |
           # A failed verification still writes release.json and opens a draft PR
           # for a human to finish; any other failure (no release.json) fails the job.
-          pnpm --filter @storypage/storybook-agent start --version "$VERSION" || true
+          pnpm --filter @storypage/pipeline pipeline build --version "$VERSION" || true
           test -f .storypage/release.json
           echo "verified=$(jq -r .verified .storypage/release.json)" >> "$GITHUB_OUTPUT"
+          cat .storypage/pr-body.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Commit and push
         env:

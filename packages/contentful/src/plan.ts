@@ -30,11 +30,27 @@ export interface ExistingContentType {
 
 export type ContentTypeAction = "create" | "update" | "deprecate" | "unchanged";
 
+/**
+ * Existing content that a schema change leaves behind in a hidden field. The
+ * content stage's agent moves it into `toField` (converting the value), or
+ * reviews it when the prop was removed outright (`toField: null`).
+ */
+export interface FieldMigration {
+  contentTypeId: string;
+  prop: string;
+  fromField: string;
+  fromType: ContentfulFieldDefinition["type"];
+  toField: string | null;
+  toType: ContentfulFieldDefinition["type"] | null;
+  reason: "kindChanged" | "removed";
+}
+
 export interface ContentTypeChange {
   id: string;
   action: ContentTypeAction;
   definition: ContentTypeDefinition;
   notes: string[];
+  migrations: FieldMigration[];
 }
 
 export interface PlanOptions {
@@ -72,8 +88,9 @@ export function mergeContentType(
   existing: ExistingContentType,
   desired: ContentTypeDefinition,
   registryVersion: string,
-): { definition: ContentTypeDefinition; notes: string[] } {
+): { definition: ContentTypeDefinition; notes: string[]; migrations: FieldMigration[] } {
   const notes: string[] = [];
+  const migrations: FieldMigration[] = [];
   const desiredByProp = new Map(desired.fields.map((f) => [f.id, f]));
   const result = new Map<string, ContentfulFieldDefinition>();
   for (const field of existing.fields) result.set(field.id, field);
@@ -104,6 +121,15 @@ export function mergeContentType(
       result.set(live.id, retire(live));
       claimed.add(live.id);
       notes.push(`field ${live.id} changed type ${live.type} → ${want.type}; created ${newId}, old field kept but hidden`);
+      migrations.push({
+        contentTypeId: existing.sys.id,
+        prop,
+        fromField: live.id,
+        fromType: live.type,
+        toField: newId,
+        toType: want.type,
+        reason: "kindChanged",
+      });
     } else {
       notes.push(`added field ${newId}`);
     }
@@ -115,12 +141,22 @@ export function mergeContentType(
     if (!claimed.has(field.id) && !field.omitted) {
       result.set(field.id, retire(field));
       notes.push(`field ${field.id} removed from the component; hidden and kept for existing content`);
+      migrations.push({
+        contentTypeId: existing.sys.id,
+        prop: field.id.replace(/V\d+$/, ""),
+        fromField: field.id,
+        fromType: field.type,
+        toField: null,
+        toType: null,
+        reason: "removed",
+      });
     }
   }
 
   return {
     definition: { ...desired, fields: [...result.values()] },
     notes,
+    migrations,
   };
 }
 
@@ -152,7 +188,7 @@ export function planContentModel(
   for (const definition of desired) {
     const current = existingById.get(definition.id);
     if (!current) {
-      changes.push({ id: definition.id, action: "create", definition, notes: ["new content type"] });
+      changes.push({ id: definition.id, action: "create", definition, notes: ["new content type"], migrations: [] });
       continue;
     }
     const merged = mergeContentType(current, definition, registry.version);
@@ -162,6 +198,7 @@ export function planContentModel(
       action: unchanged ? "unchanged" : "update",
       definition: merged.definition,
       notes: unchanged ? [] : merged.notes.length ? merged.notes : ["metadata updated"],
+      migrations: merged.migrations,
     });
   }
 
@@ -181,6 +218,7 @@ export function planContentModel(
         fields: current.fields,
       },
       notes: ["component removed from the design system; content type kept for existing entries"],
+      migrations: [],
     });
   }
   return changes;

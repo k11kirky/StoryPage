@@ -3,9 +3,12 @@
  * a page from the design system and saves it as a Contentful draft. Reply in
  * the thread to iterate; press Publish to go live.
  */
-import Anthropic from "@anthropic-ai/sdk";
+import { mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { App, LogLevel } from "@slack/bolt";
 import type { WebClient } from "@slack/web-api";
+import { serveStorybookDocs, type DocsServer } from "@storypage/agents";
 import { createContentfulClient, publishPage } from "@storypage/contentful";
 import { PUBLISH_ACTION, replyBlocks } from "./blocks.js";
 import { compose } from "./composer.js";
@@ -14,12 +17,31 @@ import { ConversationStore } from "./conversations.js";
 import { ReleaseCache } from "./release.js";
 
 const config = loadConfig();
-const anthropic = new Anthropic();
 const contentful = createContentfulClient(config.contentful);
+const workDir = process.env.STORYPAGE_BOT_WORKDIR ?? path.join(tmpdir(), "storypage-bot");
+mkdirSync(workDir, { recursive: true });
 const releases = new ReleaseCache(contentful, config.contentful.locale, config.storybookUrl);
 const conversations = new ConversationStore();
 /** Threads currently being worked on, so overlapping messages queue instead of racing. */
 const inFlight = new Map<string, Promise<void>>();
+
+/** Storybook docs MCP for the live release's Storybook, restarted when a release moves it. */
+let docs: { storybookUrl: string; server: Promise<DocsServer | null> } | null = null;
+function docsFor(storybookUrl: string): Promise<DocsServer | null> {
+  if (!storybookUrl) return Promise.resolve(null);
+  if (docs?.storybookUrl !== storybookUrl) {
+    const previous = docs;
+    docs = {
+      storybookUrl,
+      server: serveStorybookDocs(storybookUrl).catch((error: unknown) => {
+        app.logger.warn(`Storybook docs MCP unavailable: ${String(error)}`);
+        return null;
+      }),
+    };
+    void previous?.server.then((server) => server?.close());
+  }
+  return docs.server;
+}
 
 const app = new App({
   token: config.slack.botToken,
@@ -44,20 +66,19 @@ async function handleTurn(client: WebClient, channel: string, threadTs: string, 
       const conversation = conversations.get(channel, threadTs);
       const result = await compose(
         {
-          anthropic,
           contentful,
+          config: config.contentful,
           release,
-          spaceId: config.contentful.spaceId,
-          environment: config.contentful.environment,
-          locale: config.contentful.locale,
-          model: config.model,
           previewSigningSecret: config.previewSigningSecret,
+          storybookDocsUrl: (await docsFor(release.storybookUrl))?.url,
+          workDir,
+          model: config.model,
         },
-        conversation?.messages ?? [],
+        conversation?.sessionId,
         `<@${user}>: ${text}`,
       );
       const draft = result.draft ?? conversation?.draft;
-      conversations.set(channel, threadTs, { messages: result.messages, draft });
+      if (result.sessionId) conversations.set(channel, threadTs, { sessionId: result.sessionId, draft });
       await client.chat.update({
         channel,
         ts: placeholder.ts!,

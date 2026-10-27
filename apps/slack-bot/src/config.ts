@@ -14,7 +14,8 @@ export interface BotConfig {
   storybookUrl?: string | undefined;
   /** Shared with the gateway, which verifies signed preview links. */
   previewSigningSecret: string;
-  model: string;
+  /** Defaults to the agents' model (claude-opus-5-5). */
+  model?: string | undefined;
   port: number;
 }
 
@@ -34,7 +35,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BotConfig {
     contentful: configFromEnv(env),
     storybookUrl: env.STORYBOOK_URL,
     previewSigningSecret: required("PREVIEW_SIGNING_SECRET"),
-    model: env.STORYPAGE_COMPOSER_MODEL ?? "claude-opus-5-5",
+    model: env.STORYPAGE_COMPOSER_MODEL,
     port: Number(env.PORT ?? 3000),
   };
 }

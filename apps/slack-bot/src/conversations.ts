@@ -1,21 +1,19 @@
-import type Anthropic from "@anthropic-ai/sdk";
+import type { SavedDraft } from "@storypage/agents";
 
-export interface Draft {
-  pageId: string;
-  slug: string;
-  title: string;
-  designSystemVersion: string;
-}
+export type Draft = SavedDraft;
 
 export interface Conversation {
-  messages: Anthropic.Beta.BetaMessageParam[];
+  /** The thread's Agent SDK session, resumed for every reply. */
+  sessionId: string;
   draft?: Draft | undefined;
   updatedAt: number;
 }
 
 /**
- * Per-Slack-thread conversation state. In-memory with a TTL, which is fine for
- * a single instance; swap for Redis/Postgres when running more than one.
+ * Per-Slack-thread state: the agent session to resume and the latest draft.
+ * The conversation itself lives in the Agent SDK's session transcript. In
+ * memory with a TTL, which suits a single instance; swap for Redis or
+ * Postgres (and keep CLAUDE_CONFIG_DIR on shared storage) to run more.
  */
 export class ConversationStore {
   private readonly conversations = new Map<string, Conversation>();

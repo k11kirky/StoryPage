@@ -62,6 +62,7 @@ describe("planContentModel", () => {
     }, "2.0.0");
     const button = planContentModel(v2, applied(v1), options).find((c) => c.id === "dsButton")!;
     expect(button.definition.fields.find((f) => f.id === "size")).toMatchObject({ omitted: true, disabled: true, required: false });
+    expect(button.migrations).toMatchObject([{ fromField: "size", toField: null, reason: "removed" }]);
   });
 
   it("re-creates fields whose type changes as <prop>V<major>", () => {
@@ -72,6 +73,9 @@ describe("planContentModel", () => {
     const card = planContentModel(v2, applied(v1), options).find((c) => c.id === "dsFeatureCard")!;
     expect(card.definition.fields.find((f) => f.id === "body")).toMatchObject({ type: "Text", omitted: true });
     expect(card.definition.fields.find((f) => f.id === "bodyV2")).toMatchObject({ type: "RichText" });
+    expect(card.migrations).toEqual([
+      { contentTypeId: "dsFeatureCard", prop: "body", fromField: "body", fromType: "Text", toField: "bodyV2", toType: "RichText", reason: "kindChanged" },
+    ]);
   });
 
   it("deprecates removed components and drops them from page sections", () => {

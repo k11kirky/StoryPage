@@ -40,16 +40,35 @@ A version moves through the system like this:
 
 Every page entry stores the `designSystemVersion` it was built with.
 
-## The Storybook agent
+## The agentic pipeline
 
-`apps/storybook-agent` runs in the **Design system build** workflow:
+Each stage is a **Claude Agent SDK** session started by `runStage()` (`packages/agents`). A stage has:
 
-1. Diff the new manifest against the version in `registry.json`.
-2. Regenerate tokens and the registry (no model involved).
-3. Plan tasks: create, update (with the exact prop changes) or remove each component. Token-only releases skip the agent.
-4. Run Claude through the **Claude Agent SDK** with the Claude Code toolset. The prompt contains each component's contract, Figma layout tree and preview image path. `packages/design-system/CLAUDE.md` defines the conventions.
-5. Run `verify` (typecheck, contract tests, Storybook build). On failure, resume the **same agent session** with the error output, up to 3 attempts.
-6. Write `.storypage/pr-body.md`. The workflow commits, pushes and opens the PR, as a draft if verification still fails.
+- a fixed set of **MCP servers**,
+- a **tool allowlist** enforced by a permission policy; there is no human prompt, and tools a stage may not use are removed from the model's context,
+- a **budget** and turn limit,
+- a **structured result** the next step relies on.
+
+The steps that must be exact are **in-process pipeline tools**, deterministic code the agents call: token codegen, verification, the content-model planner, validation and promotion.
+
+| Stage | Runs in | MCP servers | Can change | Result |
+|---|---|---|---|---|
+| **Build** | Build workflow | Figma (Framelink), Storybook (`storybook dev` + addon-mcp), pipeline: `get_release_plan`, `verify_design_system`, `screenshot_story` | Files under `src/components/` only; no shell | Per-component report, judgment calls, unresolved items |
+| **Review** (fresh session each round) | Build workflow | Figma, Storybook docs, pipeline: `get_release_plan`, `screenshot_story` | Nothing (read-only) | Verdict + findings (blocking/minor) |
+| **Content** | Release workflow | Contentful (`@contentful/mcp-server`, pinned to the release environment), Storybook docs (served from the deployed build), pipeline: `plan_content_model`, `apply_content_model`, `list_pending_migrations`, `markdown_to_rich_text`, `validate_environment`, `promote_environment` | Entries in the cloned environment (`update_entry`, `publish_entry`); content types only via `apply_content_model`; the alias only via `promote_environment` | Migrations done, items for editors |
+| **Composer** | Slack bot, per thread | Contentful (read-only, live), Storybook docs, pipeline: `save_page_draft`, `load_page`, `search_assets` | Draft pages via `save_page_draft` only | Reply + draft |
+
+### Build → review → verify (`pipeline build`)
+
+1. **Codegen** (deterministic): diff the manifest against the current registry, check the semver bump, and regenerate tokens and the registry.
+2. **Plan:** tasks per component (create, update with exact prop changes, or remove), each with its contract, Figma `fileKey`/`nodeId`, preview image and layout tree.
+3. **Build agent:**
+   - reads the design (`get_figma_data`, plus `download_figma_images` into `.storypage/figma/`) and learns the existing system (`get-storybook-story-instructions`, `docs-show`);
+   - writes components and stories;
+   - screenshots its stories at desktop and mobile widths, in light and dark mode, and compares them with the Figma render;
+   - runs `verify_design_system` until it passes.
+4. **Review agent:** an independent session that never wrote the code compares every changed story with Figma and the contract. Blocking findings **resume the build agent's session**, then a new reviewer checks again (up to `--max-review-rounds`, default 2).
+5. **Verify** (deterministic): typecheck, contract tests and a Storybook build decide the PR's status, whatever the agents reported. The PR body carries the build report, review findings, verification result and per-stage cost.
 
 The contract tests (`packages/design-system/test/contracts.test.tsx`) are the quality gate. Every registry component must:
 
@@ -58,7 +77,32 @@ The contract tests (`packages/design-system/test/contracts.test.tsx`) are the qu
 - render with sample content (each text prop must appear in the output),
 - render every enum option.
 
-## Contentful migration strategy
+### Content migration (`pipeline release`)
+
+1. **Clone** (deterministic): copy the environment the `master` alias points at into `ds-x-y-z`.
+2. **Content agent:**
+   - applies the schema with `apply_content_model`;
+   - lists content the schema change stranded (`list_pending_migrations`): entries whose old field holds a value the new field doesn't;
+   - moves and converts it with the Contentful MCP, e.g. plain text into a new Rich Text field via `markdown_to_rich_text`, or a removed enum option to the closest new one;
+   - republishes entries that were published before;
+   - fixes pages `validate_environment` flags.
+3. **Promote:** `promote_environment` refuses while any kind-change migration is pending or any page fails validation. Pages that use a removed component are warnings for editors, not blockers. When it succeeds, it records the `dsRelease` entry and moves the alias. If the agent can't get there safely, the job fails, the alias stays where it was, and the report says why.
+
+`--skip-agents` (or `STORYPAGE_CONTENT_AGENT=false`) runs the same steps without the agent: the schema is synced and stranded content stays in hidden fields.
+
+### Composer (Slack)
+
+The bot reads the registry from the latest `dsRelease` entry in Contentful, so it composes against exactly the content model that is live. Each Slack thread is one Agent SDK session, resumed for every reply.
+
+The composer can:
+
+- look up components with Storybook's docs tools;
+- look at existing pages with Contentful's read tools;
+- write only through `save_page_draft`, which validates against the component contracts (`validatePage()`) before any entry is created. Problems come back as path-qualified messages, such as `sections[0].cta: FeatureCard is not allowed here; use one of: Button`, so it can fix them.
+
+Nothing is published until a person presses **Publish**.
+
+## Contentful schema rules
 
 `planContentModel()` turns the registry into content types (`ds<Name>`, plus `page` and `dsRelease`) and **never deletes content**:
 
@@ -66,22 +110,12 @@ The contract tests (`packages/design-system/test/contracts.test.tsx`) are the qu
 |---|---|
 | New component | New content type, created in two passes so types that reference each other can be created in any order |
 | New prop | New field |
-| Removed prop | Field becomes `omitted` and `disabled`, and is renamed "(deprecated)"; existing data is kept |
-| Kind change (e.g. text → richText) | The old field is hidden and a new field `<prop>V<major>` is created. Readers and writers resolve the live field with `resolveFieldId()`. |
-| Removed component | Content type renamed `[Deprecated] …` and removed from page section validations; existing entries still render |
+| Removed prop | Field becomes `omitted` and `disabled`, and is renamed "(deprecated)"; data kept and listed for review |
+| Kind change (e.g. text → richText) | The old field is hidden and a new field `<prop>V<major>` is created; the content agent moves the data. Readers and writers resolve the live field with `resolveFieldId()`. |
+| Removed component | Content type renamed `[Deprecated] …` and removed from page section validations; existing entries are reported to editors |
 | Enum options, slot targets, required, defaults | Field validations and defaults updated in place |
 
-With the default `alias` strategy, each release is applied to a fresh clone (`ds-x-y-z`) of the environment `master` currently points at, and `master` moves only after every content type is migrated. **Rollback** means pointing the alias back. Set `CONTENTFUL_KEEP_ENVIRONMENTS` to prune old clones, since spaces have environment limits.
-
-## The Slack composer
-
-`apps/slack-bot` reads the registry from the latest `dsRelease` entry in Contentful, so it always composes against exactly the content model that is live. It uses the Anthropic SDK tool runner (`claude-opus-5-5`, adaptive thinking, server-side refusal fallback) with three tools:
-
-- `search_assets`: find existing images to reference.
-- `load_page`: load an existing page (drafts included) to edit it.
-- `save_page_draft`: validate against the component contracts (`validatePage()`), then write draft entries bottom-up. Validation problems go back to Claude as precise, path-qualified messages, such as `sections[0].cta: FeatureCard is not allowed here; use one of: Button`, so it can fix them and retry.
-
-Each Slack thread is one conversation. Replies continue it, and messages in the same thread are queued rather than raced. Nothing is published until a person presses **Publish**, which publishes the page's children first and then the page.
+**Rollback** means pointing the alias back at the previous environment. Set `CONTENTFUL_KEEP_ENVIRONMENTS` to prune old clones, since spaces have environment limits.
 
 ## Figma annotations
 
@@ -112,18 +146,30 @@ Kinds are `text`, `longText`, `richText`, `number`, `boolean`, `enum`, `image`, 
 
 ## Security model
 
-- **Figma → gateway:** a shared bearer token, compared in constant time. The gateway, not the plugin, holds the GitHub token.
-- **The agent's input is untrusted.** Manifest text is designer-authored, so the agent runs with a strict permission policy (`apps/storybook-agent/src/permissions.ts`):
-  - writes only under `src/components/`,
-  - shell limited to the design system's own `pnpm` scripts, with no chaining or redirection,
-  - no web tools.
+Agents run unattended on untrusted input: manifests are designer-authored, Slack messages are user-authored, and code the agents write gets executed. So every stage is fenced in.
 
-  Child processes get an allowlisted environment: verification gets no credentials at all, and the agent gets only `ANTHROPIC_*`. The workflow keeps the push token off disk until the agent has finished. Agent-written code still runs during verification, with the agent's API key in scope; network-restricted runners close that gap. Finally, a human reviews every PR before it reaches `main`.
-- **Previews:** Storybook builds hold **no Contentful credentials**. The Slack bot signs `slug + expiry` with `PREVIEW_SIGNING_SECRET` (HMAC-SHA256, 7-day expiry by default). The gateway verifies the signature before returning a draft page, so a public Storybook can't read unpublished content.
-- **Publishing:** draft-only by default. Publishing needs a button press in Slack and can be restricted with `SLACK_PUBLISHER_IDS`.
+- **Tools:** each stage has an explicit allowlist (`createPolicy`). Everything else is denied, and MCP tools outside it are removed from the model's context, so the content agent never sees `delete_entry`, `delete_environment` or the content-type tools.
+- **Files and shell:**
+  - The build agent writes only under `src/components/` and has **no shell**; checks run through `verify_design_system`.
+  - The reviewer is read-only.
+  - The composer and content agents have no file or shell tools at all.
+  - Figma image downloads are confined to `.storypage/figma/`.
+- **Contentful scoping:** the Contentful MCP's tools take `spaceId`/`environmentId` as arguments. The policy pins every call, reads included, to the stage's own environment: the release clone for the content agent, the live alias (read-only) for the composer. The server also runs with `PROTECTED_ENVIRONMENTS` set to the live alias and its target, so it refuses those writes itself.
+- **Credentials:**
+  - MCP servers get only their own credentials, passed in their configs.
+  - The Claude Code process gets only `ANTHROPIC_*` and a few explicit settings (no parent-session state).
+  - Verification and `storybook dev`, which run agent-written code, get no credentials.
+  - The workflow keeps the git push token off disk until the agents finish.
+
+  Agent-written code still runs with the agent's API key reachable through its parent process tree; network-restricted runners close that gap.
+- **Human gates:** a person reviews every design-system PR before `main`, and a person presses **Publish** for every page (restrictable with `SLACK_PUBLISHER_IDS`).
+- **Figma → gateway:** a shared bearer token, compared in constant time. The gateway, not the plugin, holds the GitHub token.
+- **Previews:** Storybook builds hold **no Contentful credentials**. The Slack bot signs `slug + expiry` with `PREVIEW_SIGNING_SECRET` (HMAC-SHA256, 7-day expiry by default), and the gateway verifies the signature before returning a draft page.
+- **Third-party servers:** MCP servers run from versions pinned in the lockfile, not fetched at runtime. Framelink's telemetry is turned off.
 
 ## Scaling notes
 
-- The Slack bot keeps conversation state in memory, which is fine for one instance. Swap `ConversationStore` for Redis or Postgres to run several.
+- The Slack bot maps threads to Agent SDK sessions in memory, and sessions are stored under `CLAUDE_CONFIG_DIR`. To run several instances, move the map to Redis or Postgres and put `CLAUDE_CONFIG_DIR` and `STORYPAGE_BOT_WORKDIR` on shared storage.
 - Editing a page writes new block entries; the old ones remain as unreferenced drafts. A periodic cleanup job, or an editor reusing the existing block ids, can be added.
-- Model choices are environment-configurable: `STORYPAGE_AGENT_MODEL` and `STORYPAGE_COMPOSER_MODEL`. The composer runs at `medium` effort to keep Slack responsive.
+- Model choices are environment-configurable: `STORYPAGE_AGENT_MODEL` for every stage and `STORYPAGE_COMPOSER_MODEL` for the bot (default `claude-opus-5-5`). Pipeline stages run at `high` effort; the composer runs at `medium` to keep Slack responsive.
+- **Figma MCP:** Figma's own MCP servers (remote OAuth, or Dev Mode in the desktop app) don't run headless in CI, so the pipeline defaults to Framelink with a personal access token. Set `FIGMA_MCP_URL` (and `FIGMA_MCP_TOKEN`) to use another HTTP Figma MCP server; the tool allowlist in `packages/agents/src/mcp.ts` would need its tool names.

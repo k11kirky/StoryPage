@@ -1,6 +1,7 @@
-# Stage 3: a design-system PR was merged. Deploy Storybook, then move
-# Contentful's content model to the new version in a cloned environment and
-# switch the master alias to it.
+# Stage 3: a design-system PR was merged. Deploy Storybook, then the content
+# agent (Contentful + Storybook MCP) migrates the content model and existing
+# content in a cloned environment, and switches the master alias only once
+# every page validates.
 name: Design system release
 
 on:
@@ -70,21 +71,24 @@ jobs:
           else
             echo "new=true" >> "$GITHUB_OUTPUT"
           fi
-          jq -r .changelog "packages/design-system/manifests/$version.json" > changelog.txt
-      - name: Sync Contentful content model
+      - name: Migrate Contentful with the content agent
         if: steps.release.outputs.new == 'true' || github.event_name == 'workflow_dispatch'
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CONTENTFUL_MANAGEMENT_TOKEN: ${{ secrets.CONTENTFUL_MANAGEMENT_TOKEN }}
           CONTENTFUL_SPACE_ID: ${{ vars.CONTENTFUL_SPACE_ID }}
           CONTENTFUL_ENVIRONMENT: ${{ vars.CONTENTFUL_ENVIRONMENT || 'master' }}
           CONTENTFUL_LOCALE: ${{ vars.CONTENTFUL_LOCALE || 'en-US' }}
+          STORYPAGE_AGENT_MAX_BUDGET_USD: ${{ vars.STORYPAGE_AGENT_MAX_BUDGET_USD || '25' }}
         run: |
-          pnpm --filter @storypage/contentful sync \
-            --registry "$GITHUB_WORKSPACE/packages/design-system/src/generated/registry.json" \
+          pnpm --filter @storypage/pipeline pipeline release \
             --storybook-url "${{ needs.storybook.outputs.url }}" \
-            --changelog "$(cat changelog.txt)" \
             --strategy "${{ vars.CONTENTFUL_SYNC_STRATEGY || 'alias' }}" \
-            ${{ vars.CONTENTFUL_KEEP_ENVIRONMENTS && format('--keep-environments {0}', vars.CONTENTFUL_KEEP_ENVIRONMENTS) || '' }}
+            ${{ vars.CONTENTFUL_KEEP_ENVIRONMENTS && format('--keep-environments {0}', vars.CONTENTFUL_KEEP_ENVIRONMENTS) || '' }} \
+            ${{ vars.STORYPAGE_CONTENT_AGENT == 'false' && '--skip-agents' || '' }}
+      - name: Report
+        if: always()
+        run: cat .storypage/content-report.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
       - name: Tag release
         if: steps.release.outputs.new == 'true'
         run: |

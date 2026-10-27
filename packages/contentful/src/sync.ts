@@ -1,35 +1,42 @@
 import type { ContentTypeProps, CreateContentTypeProps, PlainClientAPI } from "contentful-management";
-import { RELEASE_CONTENT_TYPE_ID, type ContentTypeDefinition, type Registry } from "@storypage/schema";
+import {
+  PAGE_CONTENT_TYPE_ID,
+  RELEASE_CONTENT_TYPE_ID,
+  validatePage,
+  type ContentTypeDefinition,
+  type Registry,
+} from "@storypage/schema";
 import { createContentfulClient, type ContentfulConfig } from "./client.js";
-import { planContentModel, withoutLinkValidations, type ContentTypeChange, type ExistingContentType } from "./plan.js";
+import { loadPage } from "./pages.js";
+import {
+  planContentModel,
+  withoutLinkValidations,
+  type ContentTypeChange,
+  type ExistingContentType,
+  type FieldMigration,
+} from "./plan.js";
 
-export interface SyncOptions {
-  config: ContentfulConfig;
-  registry: Registry;
-  changelog?: string;
-  diffSummary?: string;
-  storybookUrl?: string;
-  /**
-   * `alias` (default): clone the environment the alias points at into
-   * `ds-<version>`, migrate it, then move the alias — instant rollback by
-   * pointing the alias back. `in-place`: migrate `config.environment` directly
-   * (for spaces without environment aliases).
-   */
-  strategy?: "alias" | "in-place";
-  /**
-   * Delete older `ds-*` environments so at most this many remain (alias
-   * strategy). Unset keeps everything; spaces have environment limits, so
-   * production setups usually set 3.
-   */
-  keepEnvironments?: number;
-  dryRun?: boolean;
-  log?: (line: string) => void;
-}
+/**
+ * A design-system release moves Contentful in steps, each usable on its own
+ * (the content-stage agent calls them as tools) or chained by
+ * `syncDesignSystem` for a run without an agent:
+ *
+ *   prepareEnvironment → planRelease → applyContentModel
+ *     → findPendingMigrations / (agent migrates content) → validateEnvironment
+ *     → promoteEnvironment
+ *
+ * Nothing readers see changes until `promoteEnvironment` moves the alias.
+ */
 
-export interface SyncResult {
+export type Strategy = "alias" | "in-place";
+type Log = (line: string) => void;
+
+export interface ReleaseTarget {
+  /** The environment being migrated (`ds-<version>` with the alias strategy). */
   environment: string;
+  /** Where the alias pointed before this release; the rollback target. */
   previousEnvironment: string | null;
-  changes: ContentTypeChange[];
+  strategy: Strategy;
 }
 
 export const environmentIdFor = (version: string) => `ds-${version.replace(/[^0-9A-Za-z]+/g, "-")}`;
@@ -48,6 +55,57 @@ async function waitForEnvironment(client: PlainClientAPI, environmentId: string,
   }
 }
 
+/** Clones the alias target into `ds-<version>` (alias strategy) and waits for it. */
+export async function prepareEnvironment(
+  config: ContentfulConfig,
+  version: string,
+  options: { strategy?: Strategy; dryRun?: boolean; log?: Log } = {},
+): Promise<ReleaseTarget> {
+  const strategy = options.strategy ?? "alias";
+  const log = options.log ?? (() => {});
+  if (strategy === "in-place") return { environment: config.environment, previousEnvironment: null, strategy };
+
+  const spaceClient = createContentfulClient(config);
+  const alias = await spaceClient.environmentAlias.get({ environmentAliasId: config.environment });
+  const previousEnvironment = alias.environment.sys.id;
+  const environment = environmentIdFor(version);
+  if (environment === previousEnvironment) {
+    log(`alias ${config.environment} already points at ${environment}; re-applying in place`);
+  } else if (!options.dryRun) {
+    const existing = await spaceClient.environment.getMany({ query: { limit: 100 } });
+    if (existing.items.some((e) => e.sys.id === environment)) {
+      log(`reusing environment ${environment}`);
+    } else {
+      log(`cloning ${previousEnvironment} → ${environment}`);
+      await spaceClient.environment.createWithId(
+        { environmentId: environment, sourceEnvironmentId: previousEnvironment },
+        { name: `Design system ${version}` },
+      );
+    }
+    await waitForEnvironment(spaceClient, environment);
+  }
+  return { environment, previousEnvironment, strategy };
+}
+
+/** In a dry run the new environment may not exist yet, so read the current one. */
+function readEnvironment(target: ReleaseTarget, dryRun?: boolean): string {
+  return dryRun && target.previousEnvironment ? target.previousEnvironment : target.environment;
+}
+
+export async function planRelease(
+  config: ContentfulConfig,
+  target: ReleaseTarget,
+  registry: Registry,
+  options: { storybookUrl?: string | undefined; dryRun?: boolean } = {},
+): Promise<ContentTypeChange[]> {
+  const client = createContentfulClient(config, readEnvironment(target, options.dryRun));
+  const existing = await client.contentType.getMany({ query: { limit: 1000 } });
+  return planContentModel(registry, existing.items as unknown as ExistingContentType[], {
+    locale: config.locale,
+    storybookUrl: options.storybookUrl,
+  });
+}
+
 function toCreateProps(definition: ContentTypeDefinition): CreateContentTypeProps {
   return {
     name: definition.name,
@@ -57,7 +115,14 @@ function toCreateProps(definition: ContentTypeDefinition): CreateContentTypeProp
   };
 }
 
-async function applyChanges(client: PlainClientAPI, changes: ContentTypeChange[], log: (line: string) => void) {
+/** Applies a plan to the target environment. Never deletes fields, types or entries. */
+export async function applyContentModel(
+  config: ContentfulConfig,
+  target: ReleaseTarget,
+  changes: ContentTypeChange[],
+  log: Log = () => {},
+): Promise<void> {
+  const client = createContentfulClient(config, target.environment);
   const live = new Map<string, ContentTypeProps>();
 
   // Pass 1: create new types without entry-link validations, so types can
@@ -83,8 +148,92 @@ async function applyChanges(client: PlainClientAPI, changes: ContentTypeChange[]
   }
 }
 
-async function recordRelease(client: PlainClientAPI, options: SyncOptions, environment: string) {
-  const { registry, config } = options;
+export interface PendingMigration extends FieldMigration {
+  /** Entries with content in `fromField` and (for kind changes) nothing in `toField` yet. */
+  entries: { id: string; published: boolean; value: unknown }[];
+}
+
+const hasValue = (value: unknown) =>
+  value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0);
+
+/**
+ * Lists the entries whose content a schema change stranded in a hidden field.
+ * For `kindChanged` migrations, an entry is done once its new field has a value.
+ */
+export async function findPendingMigrations(
+  config: ContentfulConfig,
+  target: ReleaseTarget,
+  migrations: FieldMigration[],
+): Promise<PendingMigration[]> {
+  const client = createContentfulClient(config, target.environment);
+  const pending: PendingMigration[] = [];
+  for (const migration of migrations) {
+    const entries: PendingMigration["entries"] = [];
+    for (let skip = 0; ; skip += 100) {
+      const page = await client.entry.getMany({
+        query: { content_type: migration.contentTypeId, [`fields.${migration.fromField}[exists]`]: true, limit: 100, skip },
+      });
+      for (const entry of page.items) {
+        const from = entry.fields[migration.fromField]?.[config.locale];
+        const to = migration.toField ? entry.fields[migration.toField]?.[config.locale] : undefined;
+        if (hasValue(from) && !hasValue(to)) {
+          entries.push({ id: entry.sys.id, published: entry.sys.publishedVersion !== undefined, value: from });
+        }
+      }
+      if (page.items.length < 100) break;
+    }
+    if (entries.length) pending.push({ ...migration, entries });
+  }
+  return pending;
+}
+
+export interface EnvironmentReport {
+  pages: number;
+  issues: { slug: string; path: string; message: string }[];
+}
+
+/** Loads every page in the environment and validates it against the registry. */
+export async function validateEnvironment(
+  config: ContentfulConfig,
+  target: ReleaseTarget,
+  registry: Registry,
+): Promise<EnvironmentReport> {
+  const client = createContentfulClient(config, target.environment);
+  const report: EnvironmentReport = { pages: 0, issues: [] };
+  for (let skip = 0; ; skip += 100) {
+    const pages = await client.entry.getMany({ query: { content_type: PAGE_CONTENT_TYPE_ID, limit: 100, skip } });
+    for (const entry of pages.items) {
+      const slug = String(entry.fields.slug?.[config.locale] ?? entry.sys.id);
+      report.pages += 1;
+      const page = await loadPage(client, slug, registry, config.locale);
+      if (!page) continue;
+      const declared = Array.isArray(entry.fields.sections?.[config.locale]) ? entry.fields.sections[config.locale].length : 0;
+      if (page.sections.length < declared) {
+        report.issues.push({
+          slug,
+          path: "sections",
+          message: `${declared - page.sections.length} section(s) use components that are no longer in the design system and will not render`,
+        });
+      }
+      if (page.sections.length) {
+        for (const issue of validatePage(page, registry)) report.issues.push({ slug, ...issue });
+      }
+    }
+    if (pages.items.length < 100) break;
+  }
+  return report;
+}
+
+export interface PromoteOptions {
+  changelog?: string | undefined;
+  diffSummary?: string | undefined;
+  storybookUrl?: string | undefined;
+  /** Delete older `ds-*` environments so at most this many remain. Unset keeps all. */
+  keepEnvironments?: number | undefined;
+  log?: Log;
+}
+
+async function recordRelease(client: PlainClientAPI, config: ContentfulConfig, registry: Registry, environment: string, options: PromoteOptions) {
   const field = <T>(value: T) => ({ [config.locale]: value });
   const existing = await client.entry.getMany({
     query: { content_type: RELEASE_CONTENT_TYPE_ID, "fields.version": registry.version, limit: 1 },
@@ -103,7 +252,7 @@ async function recordRelease(client: PlainClientAPI, options: SyncOptions, envir
   await client.entry.publish({ entryId: entry.sys.id }, entry);
 }
 
-async function pruneEnvironments(client: PlainClientAPI, keep: number, protect: Set<string>, log: (line: string) => void) {
+async function pruneEnvironments(client: PlainClientAPI, keep: number, protect: Set<string>, log: Log) {
   const environments = await client.environment.getMany({ query: { limit: 100 } });
   const ours = environments.items
     .filter((e) => e.sys.id.startsWith("ds-") && !protect.has(e.sys.id))
@@ -115,64 +264,59 @@ async function pruneEnvironments(client: PlainClientAPI, keep: number, protect: 
   }
 }
 
-/** Syncs Contentful content types to a design-system registry version. */
+/** Records the release in the target environment and points the alias at it. */
+export async function promoteEnvironment(
+  config: ContentfulConfig,
+  target: ReleaseTarget,
+  registry: Registry,
+  options: PromoteOptions = {},
+): Promise<void> {
+  const log = options.log ?? (() => {});
+  await recordRelease(createContentfulClient(config, target.environment), config, registry, target.environment, options);
+  if (target.strategy !== "alias" || target.environment === target.previousEnvironment) return;
+
+  const spaceClient = createContentfulClient(config);
+  const alias = await spaceClient.environmentAlias.get({ environmentAliasId: config.environment });
+  await spaceClient.environmentAlias.update(
+    { environmentAliasId: config.environment },
+    { ...alias, environment: { sys: { type: "Link", linkType: "Environment", id: target.environment } } },
+  );
+  log(`alias ${config.environment} → ${target.environment} (rollback: point it back at ${target.previousEnvironment})`);
+  if (options.keepEnvironments !== undefined) {
+    const protect = new Set([target.environment, ...(target.previousEnvironment ? [target.previousEnvironment] : [])]);
+    await pruneEnvironments(spaceClient, options.keepEnvironments, protect, log);
+  }
+}
+
+export interface SyncOptions extends PromoteOptions {
+  config: ContentfulConfig;
+  registry: Registry;
+  strategy?: Strategy;
+  dryRun?: boolean;
+}
+
+export interface SyncResult extends ReleaseTarget {
+  changes: ContentTypeChange[];
+}
+
+/**
+ * The whole release without an agent: schema changes only, no content
+ * migration. Stranded content stays in hidden fields for a human to move.
+ */
 export async function syncDesignSystem(options: SyncOptions): Promise<SyncResult> {
   const { config, registry } = options;
   const log = options.log ?? ((line: string) => console.log(line));
-  const strategy = options.strategy ?? "alias";
-  const spaceClient = createContentfulClient(config);
-
-  let targetEnvironment = config.environment;
-  let previousEnvironment: string | null = null;
-
-  if (strategy === "alias") {
-    const alias = await spaceClient.environmentAlias.get({ environmentAliasId: config.environment });
-    previousEnvironment = alias.environment.sys.id;
-    targetEnvironment = environmentIdFor(registry.version);
-    if (targetEnvironment === previousEnvironment) {
-      log(`alias ${config.environment} already points at ${targetEnvironment}; re-applying in place`);
-    } else if (!options.dryRun) {
-      const existing = await spaceClient.environment.getMany({ query: { limit: 100 } });
-      if (existing.items.some((e) => e.sys.id === targetEnvironment)) {
-        log(`reusing environment ${targetEnvironment}`);
-      } else {
-        log(`cloning ${previousEnvironment} → ${targetEnvironment}`);
-        await spaceClient.environment.createWithId(
-          { environmentId: targetEnvironment, sourceEnvironmentId: previousEnvironment },
-          { name: `Design system ${registry.version}` },
-        );
-      }
-      await waitForEnvironment(spaceClient, targetEnvironment);
-    }
-  }
-
-  // In a dry run the new environment doesn't exist yet; plan against the current one.
-  const readEnvironment = options.dryRun && previousEnvironment ? previousEnvironment : targetEnvironment;
-  const client = createContentfulClient(config, readEnvironment);
-  const existing = await client.contentType.getMany({ query: { limit: 1000 } });
-  const changes = planContentModel(registry, existing.items as unknown as ExistingContentType[], {
-    locale: config.locale,
-    storybookUrl: options.storybookUrl,
+  const target = await prepareEnvironment(config, registry.version, {
+    ...(options.strategy ? { strategy: options.strategy } : {}),
+    ...(options.dryRun ? { dryRun: true } : {}),
+    log,
   });
+  const changes = await planRelease(config, target, registry, { storybookUrl: options.storybookUrl, dryRun: options.dryRun ?? false });
   for (const change of changes.filter((c) => c.action !== "unchanged")) {
     log(`${options.dryRun ? "[dry run] " : ""}${change.action} ${change.id}: ${change.notes.join("; ")}`);
   }
-  if (options.dryRun) return { environment: targetEnvironment, previousEnvironment, changes };
-
-  await applyChanges(client, changes, log);
-  await recordRelease(client, options, targetEnvironment);
-
-  if (strategy === "alias" && targetEnvironment !== previousEnvironment) {
-    const alias = await spaceClient.environmentAlias.get({ environmentAliasId: config.environment });
-    await spaceClient.environmentAlias.update(
-      { environmentAliasId: config.environment },
-      { ...alias, environment: { sys: { type: "Link", linkType: "Environment", id: targetEnvironment } } },
-    );
-    log(`alias ${config.environment} → ${targetEnvironment} (rollback: point it back at ${previousEnvironment})`);
-    if (options.keepEnvironments !== undefined) {
-      const protect = new Set([targetEnvironment, ...(previousEnvironment ? [previousEnvironment] : [])]);
-      await pruneEnvironments(spaceClient, options.keepEnvironments, protect, log);
-    }
-  }
-  return { environment: targetEnvironment, previousEnvironment, changes };
+  if (options.dryRun) return { ...target, changes };
+  await applyContentModel(config, target, changes, log);
+  await promoteEnvironment(config, target, registry, { ...options, log });
+  return { ...target, changes };
 }
