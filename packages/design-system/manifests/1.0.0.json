@@ -1,0 +1,808 @@
+{
+  "schemaVersion": 1,
+  "name": "StoryPage",
+  "version": "1.0.0",
+  "changelog": "Initial design system: tokens, Button, FeatureCard, Hero, FeatureGrid, RichTextSection.",
+  "publishedAt": "2026-10-27T12:00:00.000Z",
+  "publishedBy": {
+    "name": "Seed"
+  },
+  "source": {
+    "figmaFileKey": "SEED",
+    "figmaFileName": "StoryPage Design System"
+  },
+  "collections": [
+    {
+      "name": "Palette",
+      "modes": [
+        "Default"
+      ],
+      "defaultMode": "Default"
+    },
+    {
+      "name": "Color",
+      "modes": [
+        "Light",
+        "Dark"
+      ],
+      "defaultMode": "Light"
+    },
+    {
+      "name": "Spacing",
+      "modes": [
+        "Default"
+      ],
+      "defaultMode": "Default"
+    },
+    {
+      "name": "Radius",
+      "modes": [
+        "Default"
+      ],
+      "defaultMode": "Default"
+    },
+    {
+      "name": "Typography",
+      "modes": [
+        "Default"
+      ],
+      "defaultMode": "Default"
+    }
+  ],
+  "tokens": [
+    {
+      "name": "palette/blue/600",
+      "type": "color",
+      "collection": "Palette",
+      "values": {
+        "Default": "#2557D6"
+      }
+    },
+    {
+      "name": "palette/blue/400",
+      "type": "color",
+      "collection": "Palette",
+      "values": {
+        "Default": "#5B85F0"
+      }
+    },
+    {
+      "name": "palette/gray/900",
+      "type": "color",
+      "collection": "Palette",
+      "values": {
+        "Default": "#111827"
+      }
+    },
+    {
+      "name": "palette/gray/100",
+      "type": "color",
+      "collection": "Palette",
+      "values": {
+        "Default": "#F3F4F6"
+      }
+    },
+    {
+      "name": "palette/white",
+      "type": "color",
+      "collection": "Palette",
+      "values": {
+        "Default": "#FFFFFF"
+      }
+    },
+    {
+      "name": "color/brand/primary",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": {
+          "alias": "palette/blue/600"
+        },
+        "Dark": {
+          "alias": "palette/blue/400"
+        }
+      },
+      "description": "Primary brand color for actions"
+    },
+    {
+      "name": "color/text/default",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": {
+          "alias": "palette/gray/900"
+        },
+        "Dark": {
+          "alias": "palette/white"
+        }
+      }
+    },
+    {
+      "name": "color/text/muted",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": "#4B5563",
+        "Dark": "#9CA3AF"
+      }
+    },
+    {
+      "name": "color/text/on-brand",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": {
+          "alias": "palette/white"
+        },
+        "Dark": {
+          "alias": "palette/white"
+        }
+      }
+    },
+    {
+      "name": "color/surface/default",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": {
+          "alias": "palette/white"
+        },
+        "Dark": {
+          "alias": "palette/gray/900"
+        }
+      }
+    },
+    {
+      "name": "color/surface/subtle",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": {
+          "alias": "palette/gray/100"
+        },
+        "Dark": "#1F2937"
+      }
+    },
+    {
+      "name": "color/border/default",
+      "type": "color",
+      "collection": "Color",
+      "values": {
+        "Light": "#E5E7EB",
+        "Dark": "#374151"
+      }
+    },
+    {
+      "name": "space/1",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 4
+      }
+    },
+    {
+      "name": "space/2",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 8
+      }
+    },
+    {
+      "name": "space/3",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 12
+      }
+    },
+    {
+      "name": "space/4",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 16
+      }
+    },
+    {
+      "name": "space/6",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 24
+      }
+    },
+    {
+      "name": "space/8",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 32
+      }
+    },
+    {
+      "name": "space/12",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 48
+      }
+    },
+    {
+      "name": "space/16",
+      "type": "dimension",
+      "collection": "Spacing",
+      "values": {
+        "Default": 64
+      }
+    },
+    {
+      "name": "radius/sm",
+      "type": "dimension",
+      "collection": "Radius",
+      "values": {
+        "Default": 4
+      }
+    },
+    {
+      "name": "radius/md",
+      "type": "dimension",
+      "collection": "Radius",
+      "values": {
+        "Default": 8
+      }
+    },
+    {
+      "name": "radius/lg",
+      "type": "dimension",
+      "collection": "Radius",
+      "values": {
+        "Default": 16
+      }
+    },
+    {
+      "name": "radius/full",
+      "type": "dimension",
+      "collection": "Radius",
+      "values": {
+        "Default": 9999
+      }
+    },
+    {
+      "name": "font/family/sans",
+      "type": "fontFamily",
+      "collection": "Typography",
+      "values": {
+        "Default": "Inter, system-ui, sans-serif"
+      }
+    }
+  ],
+  "textStyles": [
+    {
+      "name": "display",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "fontSize": 56,
+      "lineHeight": "110%",
+      "letterSpacing": -1,
+      "textCase": "none"
+    },
+    {
+      "name": "heading/lg",
+      "fontFamily": "Inter",
+      "fontWeight": 700,
+      "fontSize": 36,
+      "lineHeight": "120%",
+      "letterSpacing": -0.5,
+      "textCase": "none"
+    },
+    {
+      "name": "heading/md",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "fontSize": 24,
+      "lineHeight": "130%",
+      "letterSpacing": 0,
+      "textCase": "none"
+    },
+    {
+      "name": "body/md",
+      "fontFamily": "Inter",
+      "fontWeight": 400,
+      "fontSize": 16,
+      "lineHeight": "150%",
+      "letterSpacing": 0,
+      "textCase": "none"
+    },
+    {
+      "name": "body/lg",
+      "fontFamily": "Inter",
+      "fontWeight": 400,
+      "fontSize": 20,
+      "lineHeight": "150%",
+      "letterSpacing": 0,
+      "textCase": "none"
+    },
+    {
+      "name": "label",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "fontSize": 14,
+      "lineHeight": "100%",
+      "letterSpacing": 0.2,
+      "textCase": "none"
+    },
+    {
+      "name": "eyebrow",
+      "fontFamily": "Inter",
+      "fontWeight": 600,
+      "fontSize": 13,
+      "lineHeight": "100%",
+      "letterSpacing": 1,
+      "textCase": "upper"
+    }
+  ],
+  "effectStyles": [
+    {
+      "name": "card",
+      "boxShadow": "0 1px 2px rgba(17,24,39,0.06), 0 4px 12px rgba(17,24,39,0.08)"
+    }
+  ],
+  "components": [
+    {
+      "figmaKey": "a1b2c3button",
+      "figmaNodeId": "10:1",
+      "name": "Button",
+      "figmaName": "Actions/Button",
+      "description": "Primary call to action. Use one primary button per section.",
+      "category": "Actions",
+      "placement": "block",
+      "variantCount": 6,
+      "props": [
+        {
+          "name": "label",
+          "figmaName": "Label#10:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "href",
+          "kind": "link",
+          "required": true,
+          "editable": true,
+          "description": "Where the button goes"
+        },
+        {
+          "name": "variant",
+          "figmaName": "Variant",
+          "kind": "enum",
+          "options": [
+            "primary",
+            "secondary"
+          ],
+          "default": "primary",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "size",
+          "figmaName": "Size",
+          "kind": "enum",
+          "options": [
+            "md",
+            "lg"
+          ],
+          "default": "md",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "state",
+          "figmaName": "State",
+          "kind": "enum",
+          "options": [
+            "default",
+            "hover",
+            "pressed"
+          ],
+          "default": "default",
+          "required": false,
+          "editable": false
+        }
+      ],
+      "layout": {
+        "name": "Variant=Primary, Size=md, State=Default",
+        "type": "COMPONENT",
+        "height": 40,
+        "layout": {
+          "mode": "HORIZONTAL",
+          "gap": 8,
+          "padding": [
+            10,
+            16,
+            10,
+            16
+          ],
+          "align": "CENTER",
+          "justify": "CENTER"
+        },
+        "radius": 8,
+        "fills": [
+          "color/brand/primary"
+        ],
+        "tokens": {
+          "fill": "color/brand/primary",
+          "cornerRadius": "radius/md",
+          "paddingLeft": "space/4",
+          "itemSpacing": "space/2"
+        },
+        "children": [
+          {
+            "name": "Label",
+            "type": "TEXT",
+            "textStyle": "label",
+            "characters": "Get started",
+            "fills": [
+              "color/text/on-brand"
+            ],
+            "tokens": {
+              "fill": "color/text/on-brand"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "figmaKey": "d4e5f6featurecard",
+      "figmaNodeId": "12:1",
+      "name": "FeatureCard",
+      "figmaName": "Content/Feature Card",
+      "description": "Short feature description with an optional icon image.",
+      "category": "Content",
+      "placement": "block",
+      "variantCount": 1,
+      "props": [
+        {
+          "name": "title",
+          "figmaName": "Title#12:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "body",
+          "kind": "longText",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "icon",
+          "kind": "image",
+          "required": false,
+          "editable": true
+        }
+      ],
+      "layout": {
+        "name": "Feature Card",
+        "type": "COMPONENT",
+        "width": 320,
+        "layout": {
+          "mode": "VERTICAL",
+          "gap": 12,
+          "padding": [
+            24,
+            24,
+            24,
+            24
+          ]
+        },
+        "radius": 16,
+        "fills": [
+          "color/surface/default"
+        ],
+        "strokes": [
+          "color/border/default"
+        ],
+        "tokens": {
+          "fill": "color/surface/default",
+          "cornerRadius": "radius/lg",
+          "itemSpacing": "space/3",
+          "effect": "shadow/card"
+        },
+        "children": [
+          {
+            "name": "Icon",
+            "type": "RECTANGLE",
+            "width": 40,
+            "height": 40,
+            "radius": 8
+          },
+          {
+            "name": "Title",
+            "type": "TEXT",
+            "textStyle": "heading/md",
+            "characters": "Fast by default"
+          },
+          {
+            "name": "Body",
+            "type": "TEXT",
+            "textStyle": "body/md",
+            "fills": [
+              "color/text/muted"
+            ],
+            "characters": "Pages are composed from tested components."
+          }
+        ]
+      }
+    },
+    {
+      "figmaKey": "g7h8i9hero",
+      "figmaNodeId": "14:1",
+      "name": "Hero",
+      "figmaName": "Marketing/Hero",
+      "description": "Full-width page opener with headline, supporting copy, a call to action and optional image.",
+      "category": "Marketing",
+      "placement": "section",
+      "variantCount": 2,
+      "props": [
+        {
+          "name": "eyebrow",
+          "figmaName": "Eyebrow#14:0",
+          "kind": "text",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "headline",
+          "figmaName": "Headline#14:1",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "body",
+          "kind": "longText",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "cta",
+          "figmaName": "CTA#14:2",
+          "kind": "slot",
+          "allowedComponents": [
+            "Button"
+          ],
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "image",
+          "kind": "image",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "align",
+          "figmaName": "Align",
+          "kind": "enum",
+          "options": [
+            "left",
+            "center"
+          ],
+          "default": "left",
+          "required": false,
+          "editable": true
+        }
+      ],
+      "layout": {
+        "name": "Align=Left",
+        "type": "COMPONENT",
+        "width": 1280,
+        "layout": {
+          "mode": "HORIZONTAL",
+          "gap": 48,
+          "padding": [
+            96,
+            64,
+            96,
+            64
+          ],
+          "align": "CENTER"
+        },
+        "fills": [
+          "color/surface/subtle"
+        ],
+        "tokens": {
+          "fill": "color/surface/subtle",
+          "itemSpacing": "space/12"
+        },
+        "children": [
+          {
+            "name": "Copy",
+            "type": "FRAME",
+            "layout": {
+              "mode": "VERTICAL",
+              "gap": 16
+            },
+            "children": [
+              {
+                "name": "Eyebrow",
+                "type": "TEXT",
+                "textStyle": "eyebrow",
+                "fills": [
+                  "color/brand/primary"
+                ]
+              },
+              {
+                "name": "Headline",
+                "type": "TEXT",
+                "textStyle": "display"
+              },
+              {
+                "name": "Body",
+                "type": "TEXT",
+                "textStyle": "body/lg",
+                "fills": [
+                  "color/text/muted"
+                ]
+              },
+              {
+                "name": "CTA",
+                "type": "INSTANCE",
+                "instanceOf": "Button"
+              }
+            ]
+          },
+          {
+            "name": "Image",
+            "type": "RECTANGLE",
+            "width": 560,
+            "height": 400,
+            "radius": 16
+          }
+        ]
+      }
+    },
+    {
+      "figmaKey": "j1k2l3featuregrid",
+      "figmaNodeId": "16:1",
+      "name": "FeatureGrid",
+      "figmaName": "Marketing/Feature Grid",
+      "description": "A titled grid of feature cards.",
+      "category": "Marketing",
+      "placement": "section",
+      "variantCount": 2,
+      "props": [
+        {
+          "name": "heading",
+          "figmaName": "Heading#16:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "intro",
+          "kind": "longText",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "features",
+          "kind": "slot",
+          "multiple": true,
+          "allowedComponents": [
+            "FeatureCard"
+          ],
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "columns",
+          "figmaName": "Columns",
+          "kind": "enum",
+          "options": [
+            "v2",
+            "v3"
+          ],
+          "default": "v3",
+          "required": false,
+          "editable": true
+        }
+      ],
+      "layout": {
+        "name": "Columns=3",
+        "type": "COMPONENT",
+        "width": 1280,
+        "layout": {
+          "mode": "VERTICAL",
+          "gap": 32,
+          "padding": [
+            80,
+            64,
+            80,
+            64
+          ]
+        },
+        "tokens": {
+          "itemSpacing": "space/8"
+        },
+        "children": [
+          {
+            "name": "Heading",
+            "type": "TEXT",
+            "textStyle": "heading/lg"
+          },
+          {
+            "name": "Grid",
+            "type": "FRAME",
+            "layout": {
+              "mode": "HORIZONTAL",
+              "gap": 24,
+              "wrap": true
+            },
+            "children": [
+              {
+                "name": "Feature Card",
+                "type": "INSTANCE",
+                "instanceOf": "FeatureCard"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "figmaKey": "m4n5o6richtext",
+      "figmaNodeId": "18:1",
+      "name": "RichTextSection",
+      "figmaName": "Content/Rich Text Section",
+      "description": "Long-form copy: headings, paragraphs, lists and links.",
+      "category": "Content",
+      "placement": "section",
+      "variantCount": 1,
+      "props": [
+        {
+          "name": "content",
+          "kind": "richText",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "width",
+          "figmaName": "Width",
+          "kind": "enum",
+          "options": [
+            "narrow",
+            "wide"
+          ],
+          "default": "narrow",
+          "required": false,
+          "editable": true
+        }
+      ],
+      "layout": {
+        "name": "Width=Narrow",
+        "type": "COMPONENT",
+        "width": 720,
+        "layout": {
+          "mode": "VERTICAL",
+          "gap": 16,
+          "padding": [
+            48,
+            0,
+            48,
+            0
+          ]
+        },
+        "children": [
+          {
+            "name": "Content",
+            "type": "TEXT",
+            "textStyle": "body/md"
+          }
+        ]
+      }
+    }
+  ]
+}
