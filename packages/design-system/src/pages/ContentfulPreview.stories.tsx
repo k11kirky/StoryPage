@@ -7,10 +7,13 @@ import { PageRenderer } from "../renderer/PageRenderer";
 
 /**
  * Renders a Contentful page with the components in this Storybook build.
- * The Slack bot links here: `?path=/story/pages-contentful-preview--page&args=slug:<slug>`.
+ * The Slack bot links to the chrome-less iframe:
+ * `iframe.html?id=pages-contentful-preview--page&viewMode=story&slug=<slug>`
+ * (a query param, because Storybook URL args can't contain "/").
  * Configure with STORYBOOK_CONTENTFUL_* variables at build time.
  */
-function ContentfulPage({ slug }: { slug: string }) {
+function ContentfulPage({ slug: argSlug }: { slug: string }) {
+  const slug = new URLSearchParams(window.location.search).get("slug") ?? argSlug;
   const [state, setState] = useState<{ page?: PageDocument | null; error?: string }>({});
   useEffect(() => {
     const env = import.meta.env;
