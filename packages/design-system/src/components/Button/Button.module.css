@@ -1,0 +1,50 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-md);
+  font: var(--text-label-font);
+  letter-spacing: var(--text-label-letter-spacing);
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: filter 120ms ease, transform 120ms ease;
+  cursor: pointer;
+}
+
+.md {
+  height: 40px;
+  padding: 0 var(--space-4);
+}
+
+.lg {
+  height: 48px;
+  padding: 0 var(--space-6);
+}
+
+.primary {
+  background: var(--color-brand-primary);
+  color: var(--color-text-on-brand);
+}
+
+.secondary {
+  background: transparent;
+  color: var(--color-brand-primary);
+  border-color: var(--color-brand-primary);
+}
+
+.button:hover,
+.hover {
+  filter: brightness(1.08);
+}
+
+.button:active,
+.pressed {
+  transform: translateY(1px);
+  filter: brightness(0.95);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-brand-primary);
+  outline-offset: 2px;
+}

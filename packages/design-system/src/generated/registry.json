@@ -1,0 +1,226 @@
+{
+  "name": "StoryPage",
+  "version": "1.0.0",
+  "generatedFrom": {
+    "figmaFileKey": "SEED",
+    "publishedAt": "2026-10-27T12:00:00.000Z"
+  },
+  "components": [
+    {
+      "name": "Button",
+      "description": "Primary call to action. Use one primary button per section.",
+      "category": "Actions",
+      "placement": "block",
+      "figmaKey": "a1b2c3button",
+      "props": [
+        {
+          "name": "label",
+          "figmaName": "Label#10:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "href",
+          "kind": "link",
+          "description": "Where the button goes",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "variant",
+          "figmaName": "Variant",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "primary",
+            "secondary"
+          ],
+          "default": "primary",
+          "editable": true
+        },
+        {
+          "name": "size",
+          "figmaName": "Size",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "md",
+            "lg"
+          ],
+          "default": "md",
+          "editable": true
+        },
+        {
+          "name": "state",
+          "figmaName": "State",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "default",
+            "hover",
+            "pressed"
+          ],
+          "default": "default",
+          "editable": false
+        }
+      ]
+    },
+    {
+      "name": "FeatureCard",
+      "description": "Short feature description with an optional icon image.",
+      "category": "Content",
+      "placement": "block",
+      "figmaKey": "d4e5f6featurecard",
+      "props": [
+        {
+          "name": "title",
+          "figmaName": "Title#12:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "body",
+          "kind": "longText",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "icon",
+          "kind": "image",
+          "required": false,
+          "editable": true
+        }
+      ]
+    },
+    {
+      "name": "FeatureGrid",
+      "description": "A titled grid of feature cards.",
+      "category": "Marketing",
+      "placement": "section",
+      "figmaKey": "j1k2l3featuregrid",
+      "props": [
+        {
+          "name": "heading",
+          "figmaName": "Heading#16:0",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "intro",
+          "kind": "longText",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "features",
+          "kind": "slot",
+          "required": true,
+          "allowedComponents": [
+            "FeatureCard"
+          ],
+          "multiple": true,
+          "editable": true
+        },
+        {
+          "name": "columns",
+          "figmaName": "Columns",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "v2",
+            "v3"
+          ],
+          "default": "v3",
+          "editable": true
+        }
+      ]
+    },
+    {
+      "name": "Hero",
+      "description": "Full-width page opener with headline, supporting copy, a call to action and optional image.",
+      "category": "Marketing",
+      "placement": "section",
+      "figmaKey": "g7h8i9hero",
+      "props": [
+        {
+          "name": "eyebrow",
+          "figmaName": "Eyebrow#14:0",
+          "kind": "text",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "headline",
+          "figmaName": "Headline#14:1",
+          "kind": "text",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "body",
+          "kind": "longText",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "cta",
+          "figmaName": "CTA#14:2",
+          "kind": "slot",
+          "required": false,
+          "allowedComponents": [
+            "Button"
+          ],
+          "editable": true
+        },
+        {
+          "name": "image",
+          "kind": "image",
+          "required": false,
+          "editable": true
+        },
+        {
+          "name": "align",
+          "figmaName": "Align",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "left",
+            "center"
+          ],
+          "default": "left",
+          "editable": true
+        }
+      ]
+    },
+    {
+      "name": "RichTextSection",
+      "description": "Long-form copy: headings, paragraphs, lists and links.",
+      "category": "Content",
+      "placement": "section",
+      "figmaKey": "m4n5o6richtext",
+      "props": [
+        {
+          "name": "content",
+          "kind": "richText",
+          "required": true,
+          "editable": true
+        },
+        {
+          "name": "width",
+          "figmaName": "Width",
+          "kind": "enum",
+          "required": false,
+          "options": [
+            "narrow",
+            "wide"
+          ],
+          "default": "narrow",
+          "editable": true
+        }
+      ]
+    }
+  ]
+}

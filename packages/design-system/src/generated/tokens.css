@@ -1,0 +1,95 @@
+/* Generated from Figma by @storypage/schema — design-system@1.0.0. Do not edit. */
+
+:root {
+  --palette-blue-600: #2557D6;
+  --palette-blue-400: #5B85F0;
+  --palette-gray-900: #111827;
+  --palette-gray-100: #F3F4F6;
+  --palette-white: #FFFFFF;
+  --color-brand-primary: var(--palette-blue-600);
+  --color-text-default: var(--palette-gray-900);
+  --color-text-muted: #4B5563;
+  --color-text-on-brand: var(--palette-white);
+  --color-surface-default: var(--palette-white);
+  --color-surface-subtle: var(--palette-gray-100);
+  --color-border-default: #E5E7EB;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+  --font-family-sans: Inter, system-ui, sans-serif;
+  --shadow-card: 0 1px 2px rgba(17,24,39,0.06), 0 4px 12px rgba(17,24,39,0.08);
+  --text-display-font: 700 56px/110% "Inter";
+  --text-display-letter-spacing: -1px;
+  --text-heading-lg-font: 700 36px/120% "Inter";
+  --text-heading-lg-letter-spacing: -0.5px;
+  --text-heading-md-font: 600 24px/130% "Inter";
+  --text-heading-md-letter-spacing: 0px;
+  --text-body-md-font: 400 16px/150% "Inter";
+  --text-body-md-letter-spacing: 0px;
+  --text-body-lg-font: 400 20px/150% "Inter";
+  --text-body-lg-letter-spacing: 0px;
+  --text-label-font: 600 14px/100% "Inter";
+  --text-label-letter-spacing: 0.2px;
+  --text-eyebrow-font: 600 13px/100% "Inter";
+  --text-eyebrow-letter-spacing: 1px;
+}
+
+[data-color="dark"] {
+  --color-brand-primary: var(--palette-blue-400);
+  --color-text-default: var(--palette-white);
+  --color-text-muted: #9CA3AF;
+  --color-surface-default: var(--palette-gray-900);
+  --color-surface-subtle: #1F2937;
+  --color-border-default: #374151;
+}
+
+.ds-text-display {
+  font: var(--text-display-font);
+  letter-spacing: var(--text-display-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-heading-lg {
+  font: var(--text-heading-lg-font);
+  letter-spacing: var(--text-heading-lg-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-heading-md {
+  font: var(--text-heading-md-font);
+  letter-spacing: var(--text-heading-md-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-body-md {
+  font: var(--text-body-md-font);
+  letter-spacing: var(--text-body-md-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-body-lg {
+  font: var(--text-body-lg-font);
+  letter-spacing: var(--text-body-lg-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-label {
+  font: var(--text-label-font);
+  letter-spacing: var(--text-label-letter-spacing);
+  text-transform: none;
+}
+
+.ds-text-eyebrow {
+  font: var(--text-eyebrow-font);
+  letter-spacing: var(--text-eyebrow-letter-spacing);
+  text-transform: uppercase;
+}

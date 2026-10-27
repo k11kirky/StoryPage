@@ -1,6 +1,12 @@
 import type { PropSpec } from "./manifest.js";
 import type { Block, ImageValue, PageDocument, PropValue } from "./page.js";
-import { editableProps, sectionComponents, type ComponentContract, type Registry } from "./registry.js";
+import {
+  editableProps,
+  sectionComponents,
+  storybookDocsId,
+  type ComponentContract,
+  type Registry,
+} from "./registry.js";
 
 /**
  * Pure mapping between registry contracts and Contentful content types/entries.
@@ -157,8 +163,7 @@ export function fieldFor(prop: PropSpec, registry: Registry, options: MappingOpt
 
 function storybookLink(contract: ComponentContract, options: MappingOptions): string {
   if (!options.storybookUrl) return "";
-  const id = `${contract.category}-${contract.name}`.replace(/[^A-Za-z0-9]+/g, "-").toLowerCase();
-  return ` Storybook: ${options.storybookUrl.replace(/\/$/, "")}/?path=/docs/${id}--docs`;
+  return ` Storybook: ${options.storybookUrl.replace(/\/$/, "")}/?path=/docs/${storybookDocsId(contract)}`;
 }
 
 export function contentTypeFor(

@@ -1,0 +1,12 @@
+.ds-root {
+  font-family: var(--font-family-sans);
+  color: var(--color-text-default);
+  background: var(--color-surface-default);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ds-root *,
+.ds-root *::before,
+.ds-root *::after {
+  box-sizing: border-box;
+}
