@@ -46,13 +46,11 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           STORYPAGE_AGENT_MAX_BUDGET_USD: ${{ vars.STORYPAGE_AGENT_MAX_BUDGET_USD || '25' }}
         run: |
-          set +e
-          pnpm --filter @storypage/storybook-agent start --version "$VERSION"
-          code=$?
-          set -e
-          if [ "$code" = "2" ]; then echo "verified=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          if [ "$code" != "0" ]; then exit "$code"; fi
-          echo "verified=true" >> "$GITHUB_OUTPUT"
+          # A failed verification still writes release.json and opens a draft PR
+          # for a human to finish; any other failure (no release.json) fails the job.
+          pnpm --filter @storypage/storybook-agent start --version "$VERSION" || true
+          test -f .storypage/release.json
+          echo "verified=$(jq -r .verified .storypage/release.json)" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push
         env:
