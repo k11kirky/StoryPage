@@ -36,7 +36,7 @@ export interface ComponentBrief {
   previousName?: string;
   changes?: string[];
   contract?: Omit<ComponentSpec, "layout" | "preview" | "figmaKey">;
-  figma?: { fileKey: string; nodeId: string } | undefined;
+  figma?: { fileKey: string; nodeId: string; url: string } | undefined;
   /** Exported preview of every variant, relative to the repo root. */
   previewImage?: string | undefined;
   /** Trimmed Figma layout of the default variant, from the manifest. */
@@ -74,7 +74,14 @@ export function releasePlan(manifest: DesignSystemManifest, diff: ManifestDiff, 
         name: task.component.name,
         ...(task.type === "update" ? { previousName: task.previousName, changes: task.changes } : {}),
         contract,
-        figma: hasFigma && task.component.figmaNodeId ? { fileKey, nodeId: task.component.figmaNodeId } : undefined,
+        figma:
+          hasFigma && task.component.figmaNodeId
+            ? {
+                fileKey,
+                nodeId: task.component.figmaNodeId,
+                url: `https://www.figma.com/design/${fileKey}/?node-id=${task.component.figmaNodeId.replace(":", "-")}`,
+              }
+            : undefined,
         previewImage: preview ? `${manifestsDir}/${preview}` : undefined,
         layout,
       };

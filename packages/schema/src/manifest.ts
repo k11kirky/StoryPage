@@ -96,6 +96,11 @@ export const PropSpecSchema = z.object({
   editable: z.boolean().default(true),
 });
 
+/**
+ * Where a component lives: `section` (Storybook + Contentful page section),
+ * `block` (Storybook + Contentful type used inside other components' slots),
+ * `none` (Storybook only: a building block for other components).
+ */
 export const PlacementSchema = z.enum(["section", "block", "none"]);
 
 /** A trimmed copy of the Figma node tree for the default variant. */
@@ -247,6 +252,7 @@ export function lintManifest(manifest: DesignSystemManifest): string[] {
     }
   }
 
+  const byName = new Map(manifest.components.map((c) => [c.name, c]));
   for (const component of manifest.components) {
     const propNames = new Set<string>();
     for (const prop of component.props) {
@@ -264,6 +270,16 @@ export function lintManifest(manifest: DesignSystemManifest): string[] {
           if (!componentNames.has(allowed)) {
             problems.push(`Slot ${where} allows unknown component "${allowed}"`);
           }
+        }
+        const allowed = prop.allowedComponents ?? [];
+        const fillable = allowed.length
+          ? allowed.some((name) => byName.get(name)?.placement !== "none")
+          : manifest.components.some((c) => c.placement === "block");
+        if (component.placement !== "none" && prop.editable && prop.required && !fillable) {
+          problems.push(
+            `${where} is required content, but it only accepts Storybook-only components (${allowed.join(", ") || "none"}). ` +
+              `Make one of them a content block, or make ${prop.name} optional or a design-only property.`,
+          );
         }
       }
     }

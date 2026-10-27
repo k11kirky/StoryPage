@@ -1,8 +1,9 @@
 import type { PropSpec } from "./manifest.js";
 import type { Block, ImageValue, PageDocument, PropValue } from "./page.js";
 import {
-  editableProps,
+  contentProps,
   sectionComponents,
+  slotTargets,
   storybookDocsId,
   type ComponentContract,
   type Registry,
@@ -135,11 +136,8 @@ export function fieldShapeFor(
     case "image":
       return { type: "Link", linkType: "Asset", validations: [{ linkMimetypeGroup: ["image"] }] };
     case "slot": {
-      const allowed = (prop.allowedComponents?.length
-        ? prop.allowedComponents
-        : registry.components.map((c) => c.name)
-      ).map(contentTypeIdFor);
-      const validations = [{ linkContentType: allowed }];
+      // Only components with a Contentful type can be linked; Storybook-only ones are left out.
+      const validations = [{ linkContentType: slotTargets(prop, registry).map(contentTypeIdFor) }];
       return prop.multiple
         ? { type: "Array", items: { type: "Link", linkType: "Entry", validations } }
         : { type: "Link", linkType: "Entry", validations };
@@ -166,11 +164,13 @@ function storybookLink(contract: ComponentContract, options: MappingOptions): st
   return ` Storybook: ${options.storybookUrl.replace(/\/$/, "")}/?path=/docs/${storybookDocsId(contract)}`;
 }
 
+/** The Contentful type for a Content block or Page section (not for Storybook-only components). */
 export function contentTypeFor(
   contract: ComponentContract,
   registry: Registry,
   options: MappingOptions,
 ): ContentTypeDefinition {
+  if (contract.placement === "none") throw new Error(`${contract.name} is Storybook-only and has no content type`);
   const description = `${contract.description || contract.name} [design-system@${registry.version}]${storybookLink(contract, options)}`;
   return {
     id: contentTypeIdFor(contract.name),
@@ -185,7 +185,7 @@ export function contentTypeFor(
         required: true,
         localized: false,
       },
-      ...editableProps(contract).map((p) => fieldFor(p, registry, options)),
+      ...contentProps(contract, registry).map((p) => fieldFor(p, registry, options)),
     ],
   };
 }
@@ -310,10 +310,11 @@ export function pageFromDelivery(response: DeliveryResponse, registry: Registry)
     if (!entry) return null;
     const name = componentNameFor(entry.sys.contentType.sys.id);
     const contract = name ? registry.components.find((c) => c.name === name) : undefined;
-    if (!contract) return null;
+    // Content of a component that became Storybook-only is no longer rendered.
+    if (!contract || contract.placement === "none") return null;
     const fieldIds = Object.keys(entry.fields).map((id) => ({ id }));
     const props: Record<string, PropValue> = {};
-    for (const prop of editableProps(contract)) {
+    for (const prop of contentProps(contract, registry)) {
       const fieldId = resolveFieldId(fieldIds, prop.name);
       if (!fieldId) continue;
       const raw = entry.fields[fieldId];

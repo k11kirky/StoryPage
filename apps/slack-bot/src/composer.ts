@@ -13,6 +13,7 @@ import {
   type SavedDraft,
 } from "@storypage/agents";
 import type { ContentfulConfig, LiveRelease, PlainClientAPI } from "@storypage/contentful";
+import { cmsComponents } from "@storypage/schema";
 
 const INSTRUCTIONS = `You are StoryPage, a page-building assistant in Slack. You create and edit web pages in Contentful using only the components of the company design system. Every component is designed in Figma and implemented and tested in Storybook, so a page made of them is on-brand by construction.
 
@@ -23,7 +24,7 @@ Your tools:
 
 How to work:
 - Work out what the person wants: the page's purpose, audience, key messages, call to action and URL slug. If the request is too vague to produce a useful page (for example, no topic at all), ask up to three short questions instead of guessing. Otherwise make sensible assumptions and mention them briefly.
-- A page is a list of sections. Only components with placement "section" can be sections. A slot prop accepts only the components in its allowedComponents and holds nested blocks shaped like { "component": "...", "props": { ... } }; a slot with multiple: true takes a list. Fill every required prop, use enum options exactly as listed, and leave out props that are not editable.
+- A page is a list of sections. Only components with placement "section" can be sections; "block" components go inside slots. A slot prop accepts only the components in its allowedComponents and holds nested blocks shaped like { "component": "...", "props": { ... } }; a slot with multiple: true takes a list. Fill every required prop, use enum options exactly as listed, and leave out props that are not editable.
 - Write real, specific copy in the company's voice, never placeholder text. Keep headlines short. "text" props are limited to 255 characters. "richText" props take Markdown (## to #### headings, lists, bold, italic, links).
 - Images: search_assets and reference a suitable asset by assetId. Use an image URL only if the person gave you one. Never invent image URLs; leave optional images out when nothing fits.
 - Links: use site-relative paths such as /pricing unless the person gave a full URL.
@@ -72,7 +73,7 @@ export async function compose(ctx: ComposeContext, sessionId: string | undefined
     name: "compose",
     persona: "custom",
     cwd: ctx.workDir,
-    instructions: `${INSTRUCTIONS}\n\nDesign system ${ctx.release.registry.name}@${ctx.release.version}. Components:\n${JSON.stringify(ctx.release.registry.components)}`,
+    instructions: `${INSTRUCTIONS}\n\nDesign system ${ctx.release.registry.name}@${ctx.release.version}. Components you can use (Storybook-only building blocks are left out):\n${JSON.stringify(cmsComponents(ctx.release.registry))}`,
     prompt: userMessage,
     resume: sessionId,
     mcpServers: {

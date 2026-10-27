@@ -1,5 +1,5 @@
 import semver from "semver";
-import type { ComponentSpec, DesignSystemManifest, PropSpec, Token } from "./manifest.js";
+import type { ComponentSpec, DesignSystemManifest, Placement, PropSpec, Token } from "./manifest.js";
 
 export type Bump = "major" | "minor" | "patch";
 
@@ -23,7 +23,19 @@ export interface ComponentChange {
   /** Non-prop changes such as description, placement or layout. */
   otherChanges: string[];
   breaking: boolean;
+  /** Adds capability without breaking anything, e.g. a component becoming a content block. */
+  additive: boolean;
 }
+
+/** How designers see the three tiers. */
+export const PLACEMENT_LABELS: Record<Placement, string> = {
+  section: "Page section",
+  block: "Content block",
+  none: "Storybook only",
+};
+
+/** Section > block > Storybook only: moving down removes Contentful capability. */
+const PLACEMENT_RANK: Record<Placement, number> = { section: 2, block: 1, none: 0 };
 
 export interface ManifestDiff {
   from: string | null;
@@ -108,7 +120,9 @@ function diffComponent(before: ComponentSpec, after: ComponentSpec): ComponentCh
   if (before.name !== after.name) otherChanges.push(`renamed ${before.name} → ${after.name}`);
   if (before.description !== after.description) otherChanges.push("description changed");
   if (before.category !== after.category) otherChanges.push(`category ${before.category} → ${after.category}`);
-  if (before.placement !== after.placement) otherChanges.push(`placement ${before.placement} → ${after.placement}`);
+  if (before.placement !== after.placement) {
+    otherChanges.push(`placement ${PLACEMENT_LABELS[before.placement]} → ${PLACEMENT_LABELS[after.placement]}`);
+  }
   if (JSON.stringify(before.layout) !== JSON.stringify(after.layout)) {
     otherChanges.push("visual layout changed");
   }
@@ -121,12 +135,14 @@ function diffComponent(before: ComponentSpec, after: ComponentSpec): ComponentCh
     propsRemoved.some((p) => p.editable) ||
     propsAdded.some((p) => p.required && p.editable && p.default === undefined) ||
     propsChanged.some((c) => c.breaking) ||
-    (before.placement === "section" && after.placement !== "section");
+    // Content using it would no longer be allowed where it is, or would lose its content type.
+    PLACEMENT_RANK[after.placement] < PLACEMENT_RANK[before.placement];
+  const additive = PLACEMENT_RANK[after.placement] > PLACEMENT_RANK[before.placement];
 
   if (!propsAdded.length && !propsRemoved.length && !propsChanged.length && !otherChanges.length) {
     return null;
   }
-  return { name: after.name, before, after, propsAdded, propsRemoved, propsChanged, otherChanges, breaking };
+  return { name: after.name, before, after, propsAdded, propsRemoved, propsChanged, otherChanges, breaking, additive };
 }
 
 /**
@@ -179,7 +195,7 @@ export function diffManifests(
   const additive =
     tokens.added.length > 0 ||
     added.length > 0 ||
-    changed.some((c) => c.propsAdded.length > 0 || c.propsChanged.some((p) => p.additive));
+    changed.some((c) => c.additive || c.propsAdded.length > 0 || c.propsChanged.some((p) => p.additive));
 
   const requiredBump: Bump = breakingReasons.length ? "major" : additive ? "minor" : "patch";
   const isEmpty =

@@ -11,7 +11,7 @@ vi.mock("@storypage/agents", async (importOriginal) => {
     ...actual,
     runStage: vi.fn(async (options: StageOptions) => {
       calls.push(options);
-      return { sessionId: "s1", success: true, summary: "ok", output: null, costUsd: 0, turns: 1 };
+      return { sessionId: "s1", success: true, summary: "ok", output: null, costUsd: 0, turns: 1, mcpStatus: { figma: "needs-auth" } };
     }),
   };
 });
@@ -36,7 +36,10 @@ function planFor(manifest: DesignSystemManifest) {
 
 beforeEach(() => {
   calls.length = 0;
-  vi.stubEnv("FIGMA_API_KEY", "figd_test");
+  vi.unstubAllEnvs();
+  vi.stubEnv("FIGMA_MCP", "");
+  vi.stubEnv("FIGMA_API_KEY", "");
+  vi.stubEnv("FIGMA_MCP_URL", "");
 });
 
 describe("release plan", () => {
@@ -45,17 +48,18 @@ describe("release plan", () => {
     const plan = planFor(withFigma());
     expect(plan.components.find((c) => c.name === "Hero")).toMatchObject({
       task: "create",
-      figma: { fileKey: "AbCdEf1234567890", nodeId: "14:1" },
+      figma: { fileKey: "AbCdEf1234567890", nodeId: "14:1", url: "https://www.figma.com/design/AbCdEf1234567890/?node-id=14-1" },
       contract: { placement: "section" },
     });
   });
 });
 
 describe("build stage", () => {
-  it("can read Figma and Storybook and write components, but has no shell", async () => {
-    await runBuildStage({ repoRoot: "/repo", plan: planFor(withFigma()), storybook, camera, log: quiet });
+  it("uses Figma's official MCP server by default, and has no shell", async () => {
+    const result = await runBuildStage({ repoRoot: "/repo", plan: planFor(withFigma()), storybook, camera, log: quiet });
     const options = calls[0]!;
     expect(Object.keys(options.mcpServers).sort()).toEqual(["figma", "pipeline", "storybook"]);
+    expect(options.mcpServers.figma).toEqual({ type: "http", url: "https://mcp.figma.com/mcp", alwaysLoad: true });
     expect(options.mcpServers.storybook).toMatchObject({ type: "http", url: "http://localhost:6006/mcp" });
     expect(options.tools).toEqual(
       expect.arrayContaining([
@@ -63,19 +67,32 @@ describe("build stage", () => {
         "mcp__pipeline__verify_design_system",
         "mcp__pipeline__screenshot_story",
         "mcp__storybook__get-storybook-story-instructions",
-        "mcp__figma__get_figma_data",
+        "mcp__figma__get_design_context",
+        "mcp__figma__get_screenshot",
       ]),
     );
     expect(options.tools).not.toContain("Bash");
     expect(options.writeRoots).toEqual(["packages/design-system/src/components"]);
+    expect(options.instructions).toContain("get_design_context with the component's Figma URL");
+    // The mocked session reported Figma as not signed in: the PR should say so.
+    expect(result.figmaProblem).toMatch(/needs signing in again/);
+  });
+
+  it("can use Framelink with a personal access token, confining its downloads", async () => {
+    vi.stubEnv("FIGMA_API_KEY", "figd_test");
+    await runBuildStage({ repoRoot: "/repo", plan: planFor(withFigma()), storybook, camera, log: quiet });
+    const options = calls[0]!;
+    expect(options.mcpServers.figma).toMatchObject({ type: "stdio", env: { FIGMA_API_KEY: "figd_test", FRAMELINK_TELEMETRY: "off" } });
+    expect(options.tools).toContain("mcp__figma__get_figma_data");
     expect(options.checks?.["mcp__figma__download_figma_images"]?.({ localPath: ".storypage/figma/1.0.0" })).toBeNull();
     expect(options.checks?.["mcp__figma__download_figma_images"]?.({ localPath: "packages/design-system" })).toMatch(/\.storypage\/figma/);
   });
 
-  it("works from the manifest alone when Figma isn't configured", async () => {
-    vi.stubEnv("FIGMA_API_KEY", "");
-    await runBuildStage({ repoRoot: "/repo", plan: planFor(seed), storybook, camera, log: quiet });
+  it("works from the manifest alone when Figma can't be configured", async () => {
+    vi.stubEnv("FIGMA_MCP", "framelink");
+    const result = await runBuildStage({ repoRoot: "/repo", plan: planFor(seed), storybook, camera, log: quiet });
     expect(Object.keys(calls[0]!.mcpServers).sort()).toEqual(["pipeline", "storybook"]);
+    expect(result.figmaProblem).toMatch(/isn't configured/);
   });
 
   it("resumes its own session with review findings", async () => {

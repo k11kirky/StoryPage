@@ -27,8 +27,8 @@ Only the two steps that need judgment use a model: turning a visual spec into Re
 | Change | Bump |
 |---|---|
 | Token or style values, descriptions, visual layout | patch |
-| New tokens, components, props, enum options or slot targets | minor |
-| Removed or renamed component, removed editable prop, kind change, removed enum option, prop becomes required without a default, section becomes non-section, removed token | **major** |
+| New tokens, components, props, enum options or slot targets; a component promoted (Storybook only → Content block → Page section) | minor |
+| Removed or renamed component, removed editable prop, kind change, removed enum option, prop becomes required without a default, a component demoted (e.g. Page section → Content block → Storybook only), removed token | **major** |
 
 The plugin shows the diff and suggests the next version. The gateway rejects under-bumped versions (`409` with the version it needs) and re-publishing an existing version.
 
@@ -53,7 +53,7 @@ The steps that must be exact are **in-process pipeline tools**, deterministic co
 
 | Stage | Runs in | MCP servers | Can change | Result |
 |---|---|---|---|---|
-| **Build** | Build workflow | Figma (Framelink), Storybook (`storybook dev` + addon-mcp), pipeline: `get_release_plan`, `verify_design_system`, `screenshot_story` | Files under `src/components/` only; no shell | Per-component report, judgment calls, unresolved items |
+| **Build** | Build workflow | Figma (official server, or Framelink), Storybook (`storybook dev` + addon-mcp), pipeline: `get_release_plan`, `verify_design_system`, `screenshot_story` | Files under `src/components/` only; no shell | Per-component report, judgment calls, unresolved items |
 | **Review** (fresh session each round) | Build workflow | Figma, Storybook docs, pipeline: `get_release_plan`, `screenshot_story` | Nothing (read-only) | Verdict + findings (blocking/minor) |
 | **Content** | Release workflow | Contentful (`@contentful/mcp-server`, pinned to the release environment), Storybook docs (served from the deployed build), pipeline: `plan_content_model`, `apply_content_model`, `list_pending_migrations`, `markdown_to_rich_text`, `validate_environment`, `promote_environment` | Entries in the cloned environment (`update_entry`, `publish_entry`); content types only via `apply_content_model`; the alias only via `promote_environment` | Migrations done, items for editors |
 | **Composer** | Slack bot, per thread | Contentful (read-only, live), Storybook docs, pipeline: `save_page_draft`, `load_page`, `search_assets` | Draft pages via `save_page_draft` only | Reply + draft |
@@ -117,32 +117,54 @@ Nothing is published until a person presses **Publish**.
 
 **Rollback** means pointing the alias back at the previous environment. Set `CONTENTFUL_KEEP_ENVIRONMENTS` to prune old clones, since spaces have environment limits.
 
-## Figma annotations
+## Choosing what to publish
 
-Figma component properties map to props automatically:
+Most Figma files hold far more than editors should see: primitives, icons, work in progress. Designers decide in the plugin, per component, with no syntax to learn.
 
-| Figma property | Prop |
+| Choice in the plugin | Storybook | Contentful |
+|---|---|---|
+| **Page section** | Component + stories | Content type `ds<Name>`, allowed in `page.sections` |
+| **Content block** | Component + stories | Content type `ds<Name>`, allowed only in other components' slots |
+| **Storybook only** | Component + stories (a building block other components use) | Nothing |
+| **Not published** | Nothing | Nothing |
+
+### Components that come along automatically
+
+Designers usually pick just the sections. `resolveSelection()` (`packages/schema/src/figma.ts`) then adds what those need. Each automatic inclusion is shown in the plugin with its reason.
+
+- Every component **used inside** a published one (an instance in its layout) is published to **Storybook only**, so the agent can build the section from the real component.
+- Every component a published section or block **offers in a content slot** (an instance-swap property's preferred values) becomes a **Content block**, so editors can fill the slot.
+- A designer's explicit choice always wins:
+  - Choosing *Storybook only* for a slot's component turns that slot into a design decision in code; it's no longer a Contentful field.
+  - *Don't include* removes it from slots. It's still built for Storybook if a published component contains it; the plugin warns when that happens.
+  - A required content slot that only Storybook-only components could fill is rejected with a fix to choose.
+
+### Content fields
+
+For sections and blocks, the plugin lists the fields Contentful will get, derived from Figma's component properties:
+
+| Figma property | Field (designers can change it) |
 |---|---|
-| Text | `text`, required |
-| Boolean, or a variant with only true/false, yes/no or on/off | `boolean` |
-| Variant | `enum` (options camelCased). Variants named `state`/`interaction` are not CMS-editable. |
-| Instance swap / slot | `slot`, allowed components from preferred values |
+| Text | *Short text*, or *Paragraph* / *Link* when the name suggests it (`body`, `href`, …). Switchable to *Formatted text*. Required. |
+| Boolean, or a variant with only true/false, yes/no or on/off | *On/off* |
+| Variant | *Choice*. Variants named `state`/`interaction` start as design-only. |
+| Instance swap / slot | *Components*: the content blocks it accepts |
 
-Anything else goes in the component's **description**:
+Designers can:
 
-```
-A full-width hero with a headline and call to action.
-@placement section
-@category Marketing
-@prop body: richText -- Supporting copy under the headline
-@prop image: image required
-@prop eyebrow: text optional
-@prop cta: slot Button
-@prop features: slot[] FeatureCard|StatCard
-@prop state: internal
-```
+- untick **Editors fill in** to make a property a design decision. It stays a React prop for Storybook, but gets no Contentful field.
+- **Add field** for what Figma has no property for: an *Image*, a *Link*, *Formatted text*.
 
-Kinds are `text`, `longText`, `richText`, `number`, `boolean`, `enum`, `image`, `link` and `slot`, with `[]` marking a list. Components whose names start with `_` or `.` are treated as private and not published.
+### Where choices live
+
+Choices are stored on each component in the Figma file as shared plugin data, so the whole team sees the same selection and it versions with the file. Files from before the picker can still use description annotations (`@placement section`, `@prop body: richText`, …); a saved choice in the plugin takes precedence. Components whose names start with `_` or `.` are treated as private and never listed.
+
+### Changing your mind
+
+Tiers are part of the version:
+
+- Promoting a component (Storybook only → Content block → Page section) is a **minor** release.
+- Demoting one is **major**: its Contentful type is deprecated (never deleted) and the content agent reports the pages that used it.
 
 ## Security model
 
@@ -172,4 +194,9 @@ Agents run unattended on untrusted input: manifests are designer-authored, Slack
 - The Slack bot maps threads to Agent SDK sessions in memory, and sessions are stored under `CLAUDE_CONFIG_DIR`. To run several instances, move the map to Redis or Postgres and put `CLAUDE_CONFIG_DIR` and `STORYPAGE_BOT_WORKDIR` on shared storage.
 - Editing a page writes new block entries; the old ones remain as unreferenced drafts. A periodic cleanup job, or an editor reusing the existing block ids, can be added.
 - Model choices are environment-configurable: `STORYPAGE_AGENT_MODEL` for every stage and `STORYPAGE_COMPOSER_MODEL` for the bot (default `claude-opus-5-5`). Pipeline stages run at `high` effort; the composer runs at `medium` to keep Slack responsive.
-- **Figma MCP:** Figma's own MCP servers (remote OAuth, or Dev Mode in the desktop app) don't run headless in CI, so the pipeline defaults to Framelink with a personal access token. Set `FIGMA_MCP_URL` (and `FIGMA_MCP_TOKEN`) to use another HTTP Figma MCP server; the tool allowlist in `packages/agents/src/mcp.ts` would need its tool names.
+- **Figma MCP modes** (`FIGMA_MCP`):
+  - `official` (the default) is Figma's remote server. It has no token login, only OAuth from approved clients, and the Agent SDK qualifies because it runs Claude Code. `pipeline figma-connect` signs in once, and Claude Code stores the grant in `CLAUDE_CONFIG_DIR`, keyed by server name, type, URL and headers, so the agents' `figma` server config reuses it. The machine running the agents must keep that directory, which means a self-hosted runner or another persistent worker.
+  - `framelink` uses a personal access token and works on ephemeral runners.
+  - `url` points at another server with Figma's tools, such as the Dev Mode server in the desktop app.
+
+  Every stage records whether Figma connected, and the PR says when it didn't.

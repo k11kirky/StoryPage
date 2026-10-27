@@ -26,7 +26,10 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Figma's official MCP server needs a one-time sign-in that persists, so run on a
+    # self-hosted runner (STORYPAGE_AGENT_RUNNER) after `pipeline figma-connect`.
+    # GitHub-hosted runners work with FIGMA_MCP=framelink and FIGMA_API_KEY.
+    runs-on: ${{ vars.STORYPAGE_AGENT_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
@@ -48,8 +51,11 @@ jobs:
         id: agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Figma MCP (Framelink) reads the published file; without it agents use the manifest only.
+          # Unset: Figma's official MCP server (signed in on the runner via `pipeline figma-connect`),
+          # or Framelink when FIGMA_API_KEY is set. Without Figma, agents use the manifest only.
+          FIGMA_MCP: ${{ vars.FIGMA_MCP }}
           FIGMA_API_KEY: ${{ secrets.FIGMA_API_KEY }}
+          CLAUDE_CONFIG_DIR: ${{ vars.STORYPAGE_CLAUDE_CONFIG_DIR }}
           STORYPAGE_AGENT_MAX_BUDGET_USD: ${{ vars.STORYPAGE_AGENT_MAX_BUDGET_USD || '25' }}
         run: |
           # A failed verification still writes release.json and opens a draft PR

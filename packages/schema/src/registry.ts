@@ -55,6 +55,40 @@ export function editableProps(contract: ComponentContract): PropSpec[] {
   return contract.props.filter((p) => p.editable);
 }
 
+/**
+ * Where a component lives:
+ * - `section`: Storybook + a Contentful type that pages can use as a section.
+ * - `block`:   Storybook + a Contentful type that fits only in other components' slots.
+ * - `none`:    Storybook only (a building block for other components); no Contentful type.
+ */
+export const isCmsComponent = (contract: Pick<ComponentContract, "placement">) => contract.placement !== "none";
+
+export function cmsComponents(registry: Registry): ComponentContract[] {
+  return registry.components.filter(isCmsComponent);
+}
+
+/**
+ * Components content editors may put in a slot: the slot's allowed components
+ * that have a Contentful type, or every content block when the slot is open.
+ */
+export function slotTargets(prop: PropSpec, registry: Registry): string[] {
+  if (prop.allowedComponents?.length) {
+    return prop.allowedComponents.filter((name) => {
+      const target = findComponent(registry, name);
+      return target ? isCmsComponent(target) : false;
+    });
+  }
+  return registry.components.filter((c) => c.placement === "block").map((c) => c.name);
+}
+
+/**
+ * The props that become Contentful fields: editable props, minus slots that
+ * only accept Storybook-only components (those stay design decisions in code).
+ */
+export function contentProps(contract: ComponentContract, registry: Registry): PropSpec[] {
+  return editableProps(contract).filter((p) => p.kind !== "slot" || slotTargets(p, registry).length > 0);
+}
+
 /** Components that can be placed directly in a page's `sections`. */
 export function sectionComponents(registry: Registry): ComponentContract[] {
   return registry.components.filter((c) => c.placement === "section");

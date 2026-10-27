@@ -72,14 +72,28 @@ Deploy `apps/gateway` anywhere that runs Node (`pnpm --filter @storypage/gateway
 pnpm --filter @storypage/figma-plugin build
 ```
 
-Set your gateway's URL in `apps/figma-plugin/manifest.json` → `networkAccess.allowedDomains`, then in Figma use **Plugins → Development → Import plugin from manifest…**. Publish it privately to your organization when ready. The first time it runs, enter the gateway URL and the publish token.
+Set your gateway's URL in `apps/figma-plugin/manifest.json` → `networkAccess.allowedDomains`, then in Figma use **Plugins → Development → Import plugin from manifest…**. Publish it privately to your organization, so designers just find it under **Plugins** like any other. The first time someone runs it, they enter the gateway URL and the publish token. You can share those with the team once.
 
-### 3. GitHub
+### 3. Figma MCP for the agents (one time, not for designers)
+
+The build and review agents read the design through **Figma's official MCP server** (`https://mcp.figma.com/mcp`). It signs in with OAuth only, and only from approved clients. Claude Code is one of them, and the Agent SDK runs Claude Code. So someone signs in **once** on the machine that runs the agents, with a Figma account that can view the design-system file (a shared "design bot" seat works well):
+
+```bash
+CLAUDE_CONFIG_DIR=/srv/storypage/claude pnpm --filter @storypage/pipeline pipeline figma-connect --no-browser
+```
+
+It prints a Figma sign-in link; open it, approve, and paste the redirect URL back. The grant is stored in `CLAUDE_CONFIG_DIR` and refreshed by later runs, so that directory must persist. Run the build workflow on a **self-hosted runner** with that directory: set the `STORYPAGE_AGENT_RUNNER` and `STORYPAGE_CLAUDE_CONFIG_DIR` variables. If Figma ever needs signing in again, the PR says so and the agents carry on from the manifest.
+
+No persistent runner? Use GitHub-hosted runners with `FIGMA_MCP=framelink` and a `FIGMA_API_KEY` personal access token: the community Framelink server reads the same file over Figma's REST API.
+
+### 4. GitHub
 
 | Kind | Name | Used by |
 |------|------|---------|
 | Secret | `ANTHROPIC_API_KEY` | Build, review and content agents |
-| Secret | `FIGMA_API_KEY` | Figma MCP for the build and review agents (a Figma personal access token with file read access). Without it they work from the manifest's layout and preview images. |
+| Variable | `STORYPAGE_AGENT_RUNNER`, `STORYPAGE_CLAUDE_CONFIG_DIR` | Self-hosted runner label and its persistent Claude config directory, for Figma's official MCP server |
+| Variable | `FIGMA_MCP` (optional) | `official` (default), `framelink`, or `url` with `FIGMA_MCP_URL` |
+| Secret | `FIGMA_API_KEY` (only for `framelink`) | Figma personal access token with file read access |
 | Secret | `STORYPAGE_BOT_TOKEN` (optional) | Pushing and opening the release PR. A PAT/App token lets the PR trigger CI; PRs opened with `GITHUB_TOKEN` don't. |
 | Secret | `CONTENTFUL_MANAGEMENT_TOKEN` | Contentful sync |
 | Variable | `CONTENTFUL_SPACE_ID`, `CONTENTFUL_ENVIRONMENT` (default `master`), `CONTENTFUL_LOCALE` (default `en-US`) | Contentful sync |
@@ -90,17 +104,29 @@ Set your gateway's URL in `apps/figma-plugin/manifest.json` → `networkAccess.a
 
 Enable GitHub Pages with source **GitHub Actions** (or swap the deploy job for your host).
 
-### 4. Contentful
+### 5. Contentful
 
 Create a management token with access to the space. The default `alias` strategy needs [environment aliases](https://www.contentful.com/developers/docs/concepts/environment-aliases/) with `master` as an alias. Without them, set `CONTENTFUL_SYNC_STRATEGY=in-place`. To bootstrap from the seed design system, run the **Design system release** workflow once manually.
 
-### 5. Slack bot
+### 6. Slack bot
 
 Create a Slack app from [`apps/slack-bot/manifest.yml`](apps/slack-bot/manifest.yml), install it, and deploy `apps/slack-bot` with the variables in [`apps/slack-bot/.env.example`](apps/slack-bot/.env.example). `PREVIEW_SIGNING_SECRET` must match the gateway's. For local development, set `SLACK_APP_TOKEN` to use Socket Mode (no public URL needed).
 
 ## Using it
 
-**Designers:** annotate components in Figma (see [Figma annotations](docs/architecture.md#figma-annotations)), open the plugin, **Scan file**, check the diff and the suggested version, write what changed, and **Publish**. A PR titled *Design system x.y.z* follows a few minutes later.
+**Designers** only use the Figma plugin:
+
+1. **Scan file.**
+2. **Choose what to publish.** Every component gets one of four choices:
+   - **Page section:** editors can add it to pages.
+   - **Content block:** editors can put it inside other components, like a card in a grid.
+   - **Storybook only:** built as code for other components to use.
+   - **Not published.**
+
+   **Use suggestions** picks likely page sections. Anything a chosen component is built from, or offers in a slot, is included automatically with the reason shown. For sections and blocks, **Content fields** shows what editors fill in: switch a text to *Paragraph*, *Formatted text* or *Link*, untick design-only options, or add an *Image* field. Choices are saved in the Figma file, so the whole team shares them. See [Choosing what to publish](docs/architecture.md#choosing-what-to-publish).
+3. **Continue.** Check the summary and the suggested version, write what changed, and **Publish**.
+
+A PR titled *Design system x.y.z* follows a few minutes later.
 
 **Engineers:** review the PR like any other. It contains the build agent's per-component report and judgment calls, the review agent's verdict and findings, and the verification result (typecheck, contract tests, Storybook build). If verification failed, the PR is a draft. Merging releases it. The release job's summary shows the content agent's report: what content it migrated, and anything an editor should check.
 

@@ -9,3 +9,4 @@ export * from "./tools/content.js";
 export * from "./tools/pages.js";
 export { text, failure, image, type CallToolResult } from "./tools/result.js";
 export type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+export * from "./claude-cli.js";

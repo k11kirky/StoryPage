@@ -27,6 +27,13 @@ Each component in `src/generated/registry.json` lives in
 Then add the component to `componentMap` and the re-exports in
 `src/components/index.ts`.
 
+## Building blocks
+
+Each registry component has a `placement`: `section` and `block` components are what content editors use
+in Contentful; `none` components are Storybook-only building blocks. When a section's Figma layout
+contains an instance of another published component, import and use that component rather than
+re-implementing it, so a change to the building block reaches every section.
+
 ## Props follow the contract exactly
 
 Prop names, kinds and enum options come from the registry. Map kinds to types:

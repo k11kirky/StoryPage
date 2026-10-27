@@ -44,6 +44,8 @@ export interface StageResult<Output> {
   output: Output | null;
   costUsd: number;
   turns: number;
+  /** Connection status of each MCP server when the session started (`connected`, `needs-auth`, `failed`, …). */
+  mcpStatus: Record<string, string>;
 }
 
 export const DEFAULT_MODEL = "claude-opus-5-5";
@@ -113,8 +115,15 @@ export async function runStage<Output extends z.ZodType>(options: StageOptions<O
   });
 
   let sessionId: string | null = options.resume ?? null;
+  const mcpStatus: Record<string, string> = {};
   for await (const message of stream) {
     if ("session_id" in message && typeof message.session_id === "string") sessionId = message.session_id;
+    if (message.type === "system" && message.subtype === "init") {
+      for (const server of message.mcp_servers) {
+        mcpStatus[server.name] = server.status;
+        if (server.status !== "connected") log(`MCP server "${server.name}" is ${server.status}; its tools are unavailable this run`);
+      }
+    }
     for (const line of describe(message)) log(line);
     if (message.type !== "result") continue;
     const success = message.subtype === "success" && !message.is_error;
@@ -131,7 +140,8 @@ export async function runStage<Output extends z.ZodType>(options: StageOptions<O
       output,
       costUsd: message.total_cost_usd,
       turns: message.num_turns,
+      mcpStatus,
     };
   }
-  return { sessionId, success: false, summary: "The agent ended without a result.", output: null, costUsd: 0, turns: 0 };
+  return { sessionId, success: false, summary: "The agent ended without a result.", output: null, costUsd: 0, turns: 0, mcpStatus };
 }

@@ -15,7 +15,7 @@ import {
 import { z } from "zod";
 import { COMPONENTS_DIR, DESIGN_SYSTEM_DIR } from "../paths.js";
 import type { ReleasePlan } from "../plan.js";
-import { figmaAccess, FIGMA_DOWNLOAD_DIR } from "./common.js";
+import { figmaAccess, FIGMA_DOWNLOAD_DIR, figmaProblem } from "./common.js";
 import type { ReviewFinding } from "./review.js";
 
 export const BuildReport = z.object({
@@ -32,7 +32,7 @@ export const BuildReport = z.object({
 });
 export type BuildReport = z.infer<typeof BuildReport>;
 
-const INSTRUCTIONS = `
+const instructions = (figmaGuide: string) => `
 You are the design-system engineer in an automated Figma → Storybook → Contentful pipeline. A designer
 published a new design-system version from Figma; make the React components and Storybook stories in
 ${DESIGN_SYSTEM_DIR} match it exactly.
@@ -43,9 +43,7 @@ Your tools:
 - storybook (the running Storybook's MCP): get-storybook-story-instructions before writing stories;
   docs-list / docs-show to study existing components and follow their patterns; stories-find-by-component
   to get story ids for screenshots.
-- figma (when available): get_figma_data with the fileKey and nodeId from the plan for exact layout,
-  spacing, typography and fills of every variant; download_figma_images into ${FIGMA_DOWNLOAD_DIR}/
-  to get reference renders you can Read and compare against.
+- ${figmaGuide}
 - Read/Glob/Grep anywhere; Write/Edit only inside ${COMPONENTS_DIR}/. Tokens, the registry and manifests
   are generated and read-only. There is no shell; checks run through verify_design_system.
 
@@ -92,14 +90,16 @@ export function fixPrompt(findings: ReviewFinding[]): string {
   ].join("\n");
 }
 
-export async function runBuildStage(options: BuildStageOptions): Promise<StageResult<BuildReport>> {
+export type StageRun<T> = StageResult<T> & { figmaProblem: string | null };
+
+export async function runBuildStage(options: BuildStageOptions): Promise<StageRun<BuildReport>> {
   const log = options.log ?? ((line: string) => console.log(`[build] ${line}`));
   const figma = figmaAccess(options.repoRoot, log);
-  mkdirSync(path.join(options.repoRoot, FIGMA_DOWNLOAD_DIR), { recursive: true });
-  return runStage({
+  if (figma.mode === "framelink") mkdirSync(path.join(options.repoRoot, FIGMA_DOWNLOAD_DIR), { recursive: true });
+  const result = await runStage({
     name: "build",
     cwd: options.repoRoot,
-    instructions: INSTRUCTIONS,
+    instructions: instructions(figma.guide),
     prompt: options.resume ? fixPrompt(options.resume.findings) : buildPrompt(options.plan),
     resume: options.resume?.sessionId,
     projectSettings: true,
@@ -125,4 +125,5 @@ export async function runBuildStage(options: BuildStageOptions): Promise<StageRe
     maxTurns: 250,
     log,
   });
+  return { ...result, figmaProblem: figmaProblem(result.mcpStatus, figma.mode) };
 }

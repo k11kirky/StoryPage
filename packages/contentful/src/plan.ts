@@ -1,4 +1,5 @@
 import {
+  cmsComponents,
   contentTypeFor,
   contentTypeIdFor,
   INTERNAL_NAME_FIELD,
@@ -170,7 +171,8 @@ const normalize = (ct: { name: string; description?: string; displayField: strin
 
 export function desiredContentTypes(registry: Registry, options: PlanOptions): ContentTypeDefinition[] {
   return [
-    ...registry.components.map((c) => contentTypeFor(c, registry, options)),
+    // Storybook-only components have no content type; a type left from when one was a block is deprecated.
+    ...cmsComponents(registry).map((c) => contentTypeFor(c, registry, options)),
     pageContentType(registry),
     releaseContentType(),
   ];

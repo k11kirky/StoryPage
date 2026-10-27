@@ -11,6 +11,9 @@ export interface StageCost {
   turns: number;
 }
 
+const names = (manifest: DesignSystemManifest, placement: "section" | "block" | "none") =>
+  manifest.components.filter((c) => c.placement === placement).map((c) => c.name).join(", ") || "_none_";
+
 const list = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).join("\n") : "_None._");
 
 export function buildBody(input: {
@@ -21,6 +24,7 @@ export function buildBody(input: {
   reviews: ReviewReport[];
   verify: VerifyResult;
   costs: StageCost[];
+  figmaNote?: string | null;
   changedFiles: string;
 }): string {
   const { manifest, buildReport, verify } = input;
@@ -34,6 +38,13 @@ export function buildBody(input: {
     "",
     input.diffSummary,
     "",
+    "## What gets published",
+    "",
+    `- **Contentful page sections:** ${names(manifest, "section")}`,
+    `- **Contentful content blocks:** ${names(manifest, "block")}`,
+    `- **Storybook only:** ${names(manifest, "none")}`,
+    "",
+    ...(input.figmaNote ? [`> ⚠️ ${input.figmaNote}`, ""] : []),
     "## Build agent",
     "",
     buildReport

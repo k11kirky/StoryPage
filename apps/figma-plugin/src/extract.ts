@@ -7,11 +7,14 @@ import {
   parseDescription,
   propsFromFigma,
   splitComponentName,
+  suggestTier,
+  type ComponentDraft,
+  type ComponentSelection,
   type FigmaPropertyDefinition,
 } from "@storypage/schema/figma";
 import type {
-  ComponentSpec,
   DesignSystemManifestInput,
+  Placement,
   EffectStyle,
   LayoutNode,
   TextStyle,
@@ -22,10 +25,54 @@ import type {
 } from "@storypage/schema";
 
 export interface ExtractResult {
+  /** Everything except the components, which the designer chooses from `drafts`. */
   manifest: DesignSystemManifestInput;
-  /** Base64 PNG per component name. */
-  previews: Record<string, string>;
+  /** Every component in the file, before the designer's choices are applied. */
+  drafts: ComponentDraft[];
+  /** Choices saved in the file, by component key. */
+  selections: Record<string, ComponentSelection>;
+  /** A suggested tier per component key, for components without a saved choice. */
+  suggestions: Record<string, Placement>;
   warnings: string[];
+}
+
+/** Where the picker's choices are stored on each component, shared by everyone using the file. */
+export const PLUGIN_DATA_NAMESPACE = "storypage";
+export const SELECTION_KEY = "selection";
+
+export function readSelection(node: BaseNode): ComponentSelection | null {
+  const raw = node.getSharedPluginData(PLUGIN_DATA_NAMESPACE, SELECTION_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ComponentSelection;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveSelection(nodeId: string, selection: ComponentSelection | null): Promise<void> {
+  const node = await figma.getNodeByIdAsync(nodeId);
+  if (!node) throw new Error(`Component ${nodeId} no longer exists`);
+  node.setSharedPluginData(PLUGIN_DATA_NAMESPACE, SELECTION_KEY, selection ? JSON.stringify(selection) : "");
+}
+
+/** PNG previews (base64) for the components being published, by name. */
+export async function exportPreviews(components: { name: string; nodeId: string }[], warnings: string[]): Promise<Record<string, string>> {
+  const previews: Record<string, string> = {};
+  for (const { name, nodeId } of components) {
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node || !("exportAsync" in node)) continue;
+    try {
+      // The whole set shows every variant, which is what the build agent needs to see.
+      const scene = node as SceneNode;
+      const scale = scene.width * scene.height > 4_000_000 ? 0.5 : scene.type === "COMPONENT_SET" ? 1 : 2;
+      const bytes = await scene.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: scale } });
+      previews[name] = figma.base64Encode(bytes);
+    } catch (error) {
+      warnings.push(`Could not export a preview for ${name}: ${String(error)}`);
+    }
+  }
+  return previews;
 }
 
 const DIMENSION_SCOPES = new Set<VariableScope>([
@@ -290,8 +337,8 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
     textStyleNames: new Map((await figma.getLocalTextStylesAsync()).map((s) => [s.id, s.name])),
   };
 
-  const components: ComponentSpec[] = [];
-  const previews: Record<string, string> = {};
+  const drafts: ComponentDraft[] = [];
+  const selections: Record<string, ComponentSelection> = {};
   for (const node of nodes) {
     const { name, category } = splitComponentName(node.name);
     const parsed = parseDescription(node.description);
@@ -308,7 +355,7 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
       };
     }
     const defaultVariant = node.type === "COMPONENT_SET" ? node.defaultVariant : node;
-    components.push({
+    drafts.push({
       figmaKey: node.key,
       figmaNodeId: node.id,
       name,
@@ -316,21 +363,17 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
       description: parsed.description,
       category: parsed.category ?? category,
       placement: parsed.placement ?? "block",
+      annotatedPlacement: parsed.placement,
       props: propsFromFigma(definitions, parsed.props),
       variantCount: node.type === "COMPONENT_SET" ? node.children.length : 1,
       layout: await layoutTree(defaultVariant, ctx),
     });
-    try {
-      // The whole set shows every variant, which is what the build agent needs to see.
-      const scale = node.width * node.height > 4_000_000 ? 0.5 : node.type === "COMPONENT_SET" ? 1 : 2;
-      const bytes = await node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: scale } });
-      previews[name] = figma.base64Encode(bytes);
-    } catch (error) {
-      warnings.push(`Could not export a preview for ${name}: ${String(error)}`);
-    }
+    const saved = readSelection(node);
+    if (saved) selections[node.key] = saved;
   }
+  const suggestions = Object.fromEntries(drafts.map((d) => [d.figmaKey, suggestTier(d, drafts)]));
 
-  const duplicates = components.map((c) => c.name).filter((n, i, all) => all.indexOf(n) !== i);
+  const duplicates = drafts.map((c) => c.name).filter((n, i, all) => all.indexOf(n) !== i);
   for (const duplicate of new Set(duplicates)) warnings.push(`Two components are named ${duplicate}; rename one in Figma.`);
 
   return {
@@ -349,9 +392,11 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
       tokens,
       textStyles,
       effectStyles,
-      components,
+      components: [],
     },
-    previews,
+    drafts,
+    selections,
+    suggestions,
     warnings,
   };
 }

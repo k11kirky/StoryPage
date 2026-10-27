@@ -1,7 +1,7 @@
 import type { ContentTypeProps, EntryProps, PlainClientAPI } from "contentful-management";
 import {
+  contentProps,
   contentTypeIdFor,
-  editableProps,
   findComponent,
   INTERNAL_NAME_FIELD,
   PAGE_CONTENT_TYPE_ID,
@@ -110,7 +110,7 @@ async function writeBlock(ctx: WriteContext, block: Block, label: string): Promi
   const fields: Record<string, Record<string, unknown>> = {
     [INTERNAL_NAME_FIELD]: loc(`${ctx.slug} › ${label}`.slice(0, 255)),
   };
-  for (const prop of editableProps(contract)) {
+  for (const prop of contentProps(contract, ctx.registry)) {
     const value = block.props[prop.name];
     if (value === undefined || value === null) continue;
     const fieldId = resolveFieldId(contentType.fields, prop.name);

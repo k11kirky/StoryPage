@@ -32,41 +32,72 @@ function binPath(pkg: string, bin: string): string {
 // Figma
 // ---------------------------------------------------------------------------
 
+/**
+ * - `official`: Figma's remote MCP server (default). OAuth only, and only for
+ *   approved clients, which include Claude Code (what the Agent SDK runs). A
+ *   person signs in once (`pipeline figma-connect`); the grant lives in
+ *   CLAUDE_CONFIG_DIR and is reused by every run on that machine.
+ * - `framelink`: the community server with a Figma personal access token, for
+ *   ephemeral CI runners where no sign-in can persist.
+ * - `url`: another HTTP server with Figma's tool surface, e.g. the Dev Mode
+ *   server in the Figma desktop app (http://127.0.0.1:3845/mcp).
+ */
+export type FigmaMode = "official" | "framelink" | "url";
+
+export const FIGMA_OFFICIAL_URL = "https://mcp.figma.com/mcp";
+
 export interface FigmaMcpOptions {
-  /** Figma personal access token for the Framelink server (works headless in CI). */
+  mode: FigmaMode;
+  /** Personal access token, for `framelink`. */
   apiKey?: string | undefined;
-  /**
-   * Use an HTTP Figma MCP server instead, e.g. Figma's own remote server or a
-   * Dev Mode server, when one is reachable from where the agent runs.
-   */
+  /** Server URL, for `url`. */
   url?: string | undefined;
+  /** Bearer token for a `url` server that needs one. */
   token?: string | undefined;
 }
 
 export function figmaOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): FigmaMcpOptions {
-  return { apiKey: env.FIGMA_API_KEY, url: env.FIGMA_MCP_URL, token: env.FIGMA_MCP_TOKEN };
+  const explicit = env.FIGMA_MCP as FigmaMode | undefined;
+  const mode: FigmaMode = explicit || (env.FIGMA_MCP_URL ? "url" : env.FIGMA_API_KEY ? "framelink" : "official");
+  return { mode, apiKey: env.FIGMA_API_KEY || undefined, url: env.FIGMA_MCP_URL || undefined, token: env.FIGMA_MCP_TOKEN || undefined };
 }
 
 export function figmaServer(options: FigmaMcpOptions): McpServerConfig {
-  if (options.url) {
-    return {
-      type: "http",
-      url: options.url,
-      ...(options.token ? { headers: { Authorization: `Bearer ${options.token}` } } : {}),
-    };
+  switch (options.mode) {
+    case "official":
+      // No headers: Claude Code finds the stored OAuth grant by name + type + URL + headers.
+      return { type: "http", url: FIGMA_OFFICIAL_URL, alwaysLoad: true };
+    case "url":
+      if (!options.url) throw new Error("FIGMA_MCP=url needs FIGMA_MCP_URL");
+      return {
+        type: "http",
+        url: options.url,
+        alwaysLoad: true,
+        ...(options.token ? { headers: { Authorization: `Bearer ${options.token}` } } : {}),
+      };
+    case "framelink":
+      if (!options.apiKey) throw new Error("FIGMA_MCP=framelink needs FIGMA_API_KEY");
+      return {
+        type: "stdio",
+        command: process.execPath,
+        args: [binPath("figma-developer-mcp", "figma-developer-mcp"), "--stdio"],
+        alwaysLoad: true,
+        env: serverEnv({ FIGMA_API_KEY: options.apiKey, FRAMELINK_TELEMETRY: "off", DO_NOT_TRACK: "1" }),
+      };
   }
-  if (!options.apiKey) throw new Error("Set FIGMA_API_KEY (or FIGMA_MCP_URL) so agents can read the Figma file");
-  return {
-    type: "stdio",
-    command: process.execPath,
-    args: [binPath("figma-developer-mcp", "figma-developer-mcp"), "--stdio"],
-    alwaysLoad: true,
-    env: serverEnv({ FIGMA_API_KEY: options.apiKey, FRAMELINK_TELEMETRY: "off", DO_NOT_TRACK: "1" }),
-  };
 }
 
-/** Read-only Figma tools of the Framelink server. Downloads are confined by the policy. */
-export const FIGMA_TOOLS = ["get_figma_data", "download_figma_images"].map((t) => mcpTool(FIGMA, t));
+/**
+ * Read-only design tools per server. Figma's servers also have tools that
+ * write to the canvas or to Code Connect; agents don't get those.
+ */
+export function figmaTools(mode: FigmaMode): string[] {
+  const names =
+    mode === "framelink"
+      ? ["get_figma_data", "download_figma_images"]
+      : ["get_design_context", "get_metadata", "get_screenshot", "get_variable_defs"];
+  return names.map((t) => mcpTool(FIGMA, t));
+}
 
 // ---------------------------------------------------------------------------
 // Contentful

@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { parseManifest, renderTokensCss } from "@storypage/schema";
-import { colorToHex, extractDesignSystem, fontWeightFromStyle } from "../src/extract";
+import { resolveSelection } from "@storypage/schema/figma";
+import { colorToHex, exportPreviews, extractDesignSystem, fontWeightFromStyle, saveSelection, SELECTION_KEY } from "../src/extract";
+
+const pluginData = new Map<string, string>();
+const withPluginData = <T extends { id: string }>(node: T) =>
+  Object.assign(node, {
+    getSharedPluginData: (_ns: string, key: string) => pluginData.get(`${node.id}/${key}`) ?? "",
+    setSharedPluginData: (_ns: string, key: string, value: string) => pluginData.set(`${node.id}/${key}`, value),
+  });
 
 /** A tiny fake of the Figma plugin API: two color modes, a spacing scale, a text style and two components. */
 function installFakeFigma() {
@@ -36,7 +44,7 @@ function installFakeFigma() {
     boundVariables: { itemSpacing: { type: "VARIABLE_ALIAS", id: "v:space" } },
     children: [label],
   };
-  const button = {
+  const button = withPluginData({
     type: "COMPONENT_SET",
     id: "1:1",
     key: "key-button",
@@ -51,8 +59,8 @@ function installFakeFigma() {
       Variant: { type: "VARIANT", defaultValue: "Primary", variantOptions: ["Primary", "Secondary"] },
     },
     exportAsync: async () => new Uint8Array([137, 80, 78, 71]),
-  };
-  const hero = {
+  });
+  const hero = withPluginData({
     type: "COMPONENT",
     id: "2:1",
     key: "key-hero",
@@ -67,7 +75,7 @@ function installFakeFigma() {
     },
     children: [{ type: "INSTANCE", name: "CTA", getMainComponentAsync: async () => ({ key: "v", name: "Variant=Primary", parent: { type: "COMPONENT_SET", key: "key-button" } }) }],
     exportAsync: async () => new Uint8Array([137, 80, 78, 71]),
-  };
+  });
   const privateComponent = { ...hero, key: "key-private", name: "_Internal" };
 
   (globalThis as unknown as { figma: unknown }).figma = {
@@ -76,6 +84,7 @@ function installFakeFigma() {
     fileKey: "FILE123",
     currentUser: { id: "u1", name: "Dana Designer" },
     loadAllPagesAsync: async () => {},
+    getNodeByIdAsync: async (id: string) => [button, hero].find((n) => n.id === id) ?? null,
     variables: {
       getLocalVariableCollectionsAsync: async () => collections,
       getVariableByIdAsync: async (id: string) => variables[id] ?? null,
@@ -100,11 +109,17 @@ function installFakeFigma() {
 }
 
 describe("extractDesignSystem", () => {
-  beforeEach(installFakeFigma);
+  beforeEach(() => {
+    pluginData.clear();
+    installFakeFigma();
+  });
 
   it("produces a manifest that passes the schema", async () => {
-    const { manifest, previews, warnings } = await extractDesignSystem();
-    const parsed = parseManifest({ ...manifest, version: "1.0.0" });
+    const scan = await extractDesignSystem();
+    const { manifest, warnings } = scan;
+    // Pick Hero as a page section; Button comes along because Hero's CTA slot accepts it.
+    const resolved = resolveSelection(scan.drafts, { "key-hero": { tier: "section" } });
+    const parsed = parseManifest({ ...manifest, components: resolved.components, version: "1.0.0" });
 
     expect(parsed.name).toBe("Acme");
     expect(parsed.publishedBy.name).toBe("Dana Designer");
@@ -132,9 +147,20 @@ describe("extractDesignSystem", () => {
     expect(hero!.props.find((p) => p.name === "cta")).toMatchObject({ kind: "slot", allowedComponents: ["Button"] });
     expect(hero!.layout!.children![0]).toMatchObject({ instanceOf: "Button" });
 
+    expect(resolved.included).toEqual([{ name: "Button", tier: "block", reason: "editors can put it in Hero's cta" }]);
+    expect(scan.suggestions).toEqual({ "key-button": "block", "key-hero": "section" });
+    expect(scan.drafts.map((d) => d.name)).not.toContain("_Internal");
+    const previews = await exportPreviews(parsed.components.map((c) => ({ name: c.name, nodeId: c.figmaNodeId! })), []);
     expect(Object.keys(previews)).toEqual(["Button", "Hero"]);
     expect(warnings).toEqual([]);
     expect(renderTokensCss(parsed)).toContain("--color-brand-primary: var(--palette-blue);");
+  });
+
+  it("stores the designer's choices on the component in the file", async () => {
+    await saveSelection("2:1", { tier: "section", props: { body: { kind: "richText" } } });
+    const scan = await extractDesignSystem();
+    expect(scan.selections).toEqual({ "key-hero": { tier: "section", props: { body: { kind: "richText" } } } });
+    expect(pluginData.get(`2:1/${SELECTION_KEY}`)).toContain('"tier":"section"');
   });
 
   it("maps style names and colors", () => {

@@ -1,11 +1,13 @@
-import type { Placement, PropKind, PropSpec } from "./manifest.js";
+import type { ComponentSpec, LayoutNode, Placement, PropKind, PropSpec } from "./manifest.js";
 
 /**
- * Pure helpers the Figma plugin uses to turn Figma component properties and
- * description annotations into prop specs. They live here (not in the plugin)
- * so they are unit-tested and shared with the gateway's validation.
+ * Pure helpers the Figma plugin uses to turn Figma component properties into
+ * prop specs, and to resolve which components a designer chose to publish.
+ * They live here (not in the plugin) so they are unit-tested.
  *
- * Designers annotate a component's description in Figma:
+ * Designers normally make their choices in the plugin's UI, which stores them
+ * in the Figma file (see `ComponentSelection`). Older files may instead
+ * annotate a component's description, which is still read:
  *
  *   A full-width hero with a headline and call to action.
  *   @placement section
@@ -175,7 +177,7 @@ export function propsFromFigma(
         prop = { name, figmaName: rawName, kind: "boolean", default: Boolean(def.defaultValue), required: false, editable: true };
         break;
       case "TEXT":
-        prop = { name, figmaName: rawName, kind: "text", required: true, editable: true };
+        prop = { name, figmaName: rawName, kind: suggestTextKind(name), required: true, editable: true };
         break;
       case "INSTANCE_SWAP":
       case "SLOT":
@@ -217,4 +219,194 @@ export function propsFromFigma(
   }
 
   return [...props.values()];
+}
+
+/** A better default than plain text for common Figma text property names. */
+export function suggestTextKind(propName: string): PropKind {
+  if (/(href|url|link)$/i.test(propName)) return "link";
+  if (/(body|description|copy|intro|paragraph|summary|content)$/i.test(propName)) return "longText";
+  return "text";
+}
+
+// ---------------------------------------------------------------------------
+// Choosing what to publish
+// ---------------------------------------------------------------------------
+
+/** `off`: not published. Otherwise the component's placement (see PlacementSchema). */
+export type Tier = "off" | Placement;
+
+export interface PropOverride {
+  kind?: PropKind;
+  /** Whether content editors fill this in Contentful (false = a design decision in code). */
+  editable?: boolean;
+  required?: boolean;
+  multiple?: boolean;
+  allowedComponents?: string[];
+  description?: string;
+}
+
+/**
+ * What a designer chose for one component in the plugin. Stored on the
+ * component in the Figma file (shared plugin data), so choices are shared by
+ * the whole team and travel with the file.
+ */
+export interface ComponentSelection {
+  tier: Tier;
+  category?: string;
+  /** Overrides of what was derived from the Figma component properties. */
+  props?: Record<string, PropOverride>;
+  /** Content fields Figma has no property type for: images, links, rich text. */
+  extraProps?: PropSpec[];
+}
+
+/** A component as scanned from Figma, before the designer's choices are applied. */
+export interface ComponentDraft extends ComponentSpec {
+  /** The placement a description annotation asked for, in files from before the picker. */
+  annotatedPlacement?: Placement | undefined;
+}
+
+export interface IncludedDependency {
+  name: string;
+  tier: Placement;
+  reason: string;
+}
+
+export interface ResolvedSelection {
+  components: ComponentSpec[];
+  /** Components published because a chosen component needs them. */
+  included: IncludedDependency[];
+  warnings: string[];
+}
+
+const SECTION_NAME = /(section|hero|header|footer|banner|grid|testimonial|pricing|faq|cta|features?|showcase|gallery)$/i;
+
+function instanceNames(node: LayoutNode | undefined, out = new Set<string>()): Set<string> {
+  if (!node) return out;
+  if (node.instanceOf) out.add(node.instanceOf);
+  for (const child of node.children ?? []) instanceNames(child, out);
+  return out;
+}
+
+/**
+ * A starting point for the picker: wide or section-named components look like
+ * page sections, components other components accept in slots look like
+ * content blocks, everything else like a Storybook-only building block.
+ */
+export function suggestTier(draft: ComponentDraft, drafts: ComponentDraft[]): Placement {
+  if (draft.annotatedPlacement) return draft.annotatedPlacement;
+  const width = draft.layout?.width ?? 0;
+  if (width >= 960 || (width >= 600 && SECTION_NAME.test(draft.name))) return "section";
+  const isSlotTarget = drafts.some((d) => d.props.some((p) => p.kind === "slot" && p.allowedComponents?.includes(draft.name)));
+  return isSlotTarget ? "block" : "none";
+}
+
+/** Applies a selection's prop overrides and extra fields to a scanned component. */
+export function applyPropChoices(draft: ComponentDraft, selection: ComponentSelection | undefined): PropSpec[] {
+  const props = draft.props.map((prop): PropSpec => {
+    const override = selection?.props?.[prop.name];
+    if (!override) return prop;
+    const merged: PropSpec = { ...prop };
+    for (const [key, value] of Object.entries(override)) {
+      if (value !== undefined) (merged as unknown as Record<string, unknown>)[key] = value;
+    }
+    if (merged.kind !== "slot") {
+      delete merged.allowedComponents;
+      delete merged.multiple;
+    }
+    return merged;
+  });
+  const names = new Set(props.map((p) => p.name));
+  for (const extra of selection?.extraProps ?? []) {
+    if (!names.has(extra.name)) props.push(extra);
+  }
+  return props;
+}
+
+const RANK: Record<Placement, number> = { section: 2, block: 1, none: 0 };
+
+/**
+ * Turns the designer's choices into the components to publish. Designers can
+ * pick just the sections they want; everything those need comes along:
+ * components used inside them are published to Storybook, and components
+ * their content slots accept become content blocks (unless the designer chose
+ * otherwise for them).
+ */
+export function resolveSelection(
+  drafts: ComponentDraft[],
+  selections: Record<string, ComponentSelection | undefined>,
+): ResolvedSelection {
+  const byName = new Map(drafts.map((d) => [d.name, d]));
+  const warnings: string[] = [];
+  const explicit = new Map<string, Tier>();
+  for (const draft of drafts) {
+    const tier = selections[draft.figmaKey]?.tier ?? draft.annotatedPlacement;
+    if (tier) explicit.set(draft.name, tier);
+  }
+
+  const tiers = new Map<string, Placement>();
+  const reasons = new Map<string, string>();
+  for (const [name, tier] of explicit) if (tier !== "off") tiers.set(name, tier);
+
+  const props = new Map(drafts.map((d) => [d.name, applyPropChoices(d, selections[d.figmaKey])]));
+  // Raise a dependency to at least `tier`, unless the designer chose its tier themselves.
+  const require = (name: string, tier: Placement, reason: string): boolean => {
+    if (!byName.has(name)) return false;
+    const chosen = explicit.get(name);
+    if (chosen === "off") {
+      // A slot can simply stop offering it; but a component a published one is built from must exist in code.
+      if (tier !== "none" || tiers.has(name)) return false;
+      warnings.push(`${name} is set to "Not published", but ${reason}, so it will be published to Storybook only.`);
+      tiers.set(name, "none");
+      reasons.set(name, reason);
+      return true;
+    }
+    if (chosen) return false;
+    const current = tiers.get(name);
+    if (current !== undefined && RANK[current] >= RANK[tier]) return false;
+    tiers.set(name, tier);
+    reasons.set(name, reason);
+    return true;
+  };
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, tier] of [...tiers]) {
+      const draft = byName.get(name)!;
+      for (const used of instanceNames(draft.layout)) {
+        if (used !== name && require(used, "none", `${name} uses it`)) changed = true;
+      }
+      if (tier === "none") continue;
+      for (const prop of props.get(name)!) {
+        if (prop.kind !== "slot" || !prop.editable) continue;
+        for (const target of prop.allowedComponents ?? []) {
+          if (require(target, "block", `editors can put it in ${name}'s ${prop.name}`)) changed = true;
+        }
+      }
+    }
+  }
+
+  const components: ComponentSpec[] = [];
+  for (const draft of drafts) {
+    const tier = tiers.get(draft.name);
+    if (!tier) continue;
+    const selection = selections[draft.figmaKey];
+    const { annotatedPlacement: _annotated, ...spec } = draft;
+    const resolvedProps = props.get(draft.name)!.map((prop): PropSpec => {
+      if (prop.kind !== "slot" || !prop.allowedComponents) return prop;
+      const kept = prop.allowedComponents.filter((target) => tiers.has(target));
+      const dropped = prop.allowedComponents.filter((target) => !tiers.has(target));
+      if (dropped.length) warnings.push(`${draft.name}.${prop.name} can't offer ${dropped.join(", ")}: not published.`);
+      return { ...prop, allowedComponents: kept };
+    });
+    components.push({
+      ...spec,
+      placement: tier,
+      ...(selection?.category ? { category: selection.category } : {}),
+      props: resolvedProps,
+    });
+  }
+
+  const included = [...reasons].map(([name, reason]) => ({ name, tier: tiers.get(name)!, reason }));
+  return { components, included, warnings: [...new Set(warnings)] };
 }

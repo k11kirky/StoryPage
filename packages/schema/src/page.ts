@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { PropSpec } from "./manifest.js";
-import { findComponent, type Registry } from "./registry.js";
+import { contentProps, findComponent, slotTargets, type Registry } from "./registry.js";
 
 /**
  * A CMS-agnostic page: a tree of component blocks whose props follow the
@@ -122,11 +122,9 @@ function validateValue(prop: PropSpec, value: PropValue, path: string, registry:
           issues.push({ path: childPath, message: "expected a component block" });
           return;
         }
-        if (prop.allowedComponents?.length && !prop.allowedComponents.includes(child.component)) {
-          issues.push({
-            path: childPath,
-            message: `${child.component} is not allowed here; use one of: ${prop.allowedComponents.join(", ")}`,
-          });
+        const allowed = slotTargets(prop, registry);
+        if (!allowed.includes(child.component)) {
+          issues.push({ path: childPath, message: `${child.component} is not allowed here; use one of: ${allowed.join(", ")}` });
           return;
         }
         validateBlock(child, registry, childPath, issues);
@@ -145,17 +143,22 @@ export function validateBlock(block: Block, registry: Registry, path: string, is
     });
     return issues;
   }
+  if (contract.placement === "none") {
+    issues.push({ path, message: `${contract.name} is a Storybook-only building block and can't be placed on a page` });
+    return issues;
+  }
   const props = new Map(contract.props.map((p) => [p.name, p]));
+  const content = new Set(contentProps(contract, registry).map((p) => p.name));
   for (const key of Object.keys(block.props)) {
     const prop = props.get(key);
     if (!prop) {
       issues.push({ path: `${path}.${key}`, message: `${contract.name} has no prop "${key}"` });
-    } else if (!prop.editable) {
+    } else if (!content.has(key)) {
       issues.push({ path: `${path}.${key}`, message: `${contract.name}.${key} is not editable content` });
     }
   }
   for (const prop of contract.props) {
-    if (!prop.editable) continue;
+    if (!content.has(prop.name)) continue;
     const value = block.props[prop.name];
     if (value === undefined || value === null) {
       if (prop.required && prop.default === undefined) {

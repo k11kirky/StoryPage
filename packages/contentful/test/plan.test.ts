@@ -113,3 +113,18 @@ describe("preview tokens", async () => {
     expect(verifyPreview("launch", token, "secret", 1_000_000 + 61_000)).toBe(false);
   });
 });
+
+describe("Storybook-only components", () => {
+  it("get no content type, and a block demoted to Storybook-only is deprecated", () => {
+    const v1 = toRegistry(seed);
+    const v2 = release((m) => {
+      m.components.find((c) => c.name === "FeatureCard")!.placement = "none";
+      m.components.find((c) => c.name === "FeatureGrid")!.props.find((p) => p.name === "features")!.required = false;
+    }, "2.0.0");
+    const plan = planContentModel(v2, applied(v1), options);
+    expect(plan.find((c) => c.id === "dsFeatureCard")).toMatchObject({ action: "deprecate" });
+    const grid = plan.find((c) => c.id === "dsFeatureGrid")!;
+    expect(grid.definition.fields.find((f) => f.id === "features")).toMatchObject({ omitted: true });
+    expect(planContentModel(v2, [], options).map((c) => c.id)).not.toContain("dsFeatureCard");
+  });
+});

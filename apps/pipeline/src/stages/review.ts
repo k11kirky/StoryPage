@@ -14,7 +14,7 @@ import {
 import { z } from "zod";
 import { DESIGN_SYSTEM_DIR } from "../paths.js";
 import type { ReleasePlan } from "../plan.js";
-import { figmaAccess, FIGMA_DOWNLOAD_DIR } from "./common.js";
+import { figmaAccess } from "./common.js";
 
 export const ReviewFinding = z.object({
   component: z.string(),
@@ -31,14 +31,17 @@ export const ReviewReport = z.object({
 });
 export type ReviewReport = z.infer<typeof ReviewReport>;
 
-const INSTRUCTIONS = `
+const instructions = (figmaGuide: string) => `
 You are an independent design QA reviewer in an automated Figma → Storybook pipeline. Another agent built
 React components from a Figma release; you did not write them. Decide whether each changed component
 faithfully implements its Figma design and contract. You can read but not change code.
 
+Design sources:
+- ${figmaGuide}
+- The plan's preview image of every variant (Read it).
+
 For each component in the release plan (pipeline.get_release_plan):
-- Look at the design: figma get_figma_data for the node (when available) and its reference render
-  (download_figma_images into ${FIGMA_DOWNLOAD_DIR}/, or the preview image in the plan). Read the images.
+- Look at the design in Figma and its reference render.
 - Look at the implementation: storybook docs-show for its stories and props, screenshot_story at 1280
   and 375 wide, in light and dark mode, and the source under ${DESIGN_SYSTEM_DIR}/src/components.
 - Check: props match the contract exactly (names, options, defaults); layout, spacing, typography, color
@@ -66,7 +69,7 @@ export async function runReviewStage(options: ReviewStageOptions): Promise<Stage
   return runStage({
     name: `review-${options.round}`,
     cwd: options.repoRoot,
-    instructions: INSTRUCTIONS,
+    instructions: instructions(figma.guide),
     prompt: `Review design-system ${options.plan.version}. Components to review: ${changed.join(", ") || "(none; check removals left nothing behind)"}.`,
     projectSettings: true,
     mcpServers: {

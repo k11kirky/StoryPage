@@ -22,7 +22,8 @@ const NETWORK_KEYS = ["HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "h
 
 function pick(keep: (key: string) => boolean, source: NodeJS.ProcessEnv): Record<string, string> {
   return Object.fromEntries(
-    Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined && keep(entry[0])),
+    // Empty values (e.g. unset CI variables) are dropped rather than passed as "".
+    Object.entries(source).filter((entry): entry is [string, string] => entry[1] !== undefined && entry[1] !== "" && keep(entry[0])),
   );
 }
 

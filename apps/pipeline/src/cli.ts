@@ -9,6 +9,9 @@
  *   pnpm --filter @storypage/pipeline pipeline release --storybook-url https://…
  *     clone Contentful environment → content agent (schema + content migration)
  *     → validated promotion of the alias
+ *
+ *   pnpm --filter @storypage/pipeline pipeline figma-connect [--no-browser]
+ *     one-time sign-in to Figma's official MCP server on the machine that runs the agents
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +19,9 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import semver from "semver";
 import {
+  claudeExecutable,
+  FIGMA,
+  FIGMA_OFFICIAL_URL,
   serveStorybookDocs,
   startStorybookDev,
   StoryCamera,
@@ -49,6 +55,7 @@ const { values } = parseArgs({
     "storybook-url": { type: "string" },
     strategy: { type: "string", default: "alias" },
     "keep-environments": { type: "string" },
+    "no-browser": { type: "boolean", default: false },
   },
 });
 
@@ -99,6 +106,7 @@ async function build() {
   writeOutput("release-plan.json", `${JSON.stringify(plan, null, 2)}\n`);
 
   const costs: StageCost[] = [];
+  let figmaNote: string | null = null;
   let buildReport: BuildReport | null = null;
   let buildSummary = "No component changes; tokens were regenerated deterministically.";
   const reviews: ReviewReport[] = [];
@@ -110,6 +118,7 @@ async function build() {
       // Step 2: the build agent implements the release against Figma and Storybook.
       let built = await runBuildStage({ repoRoot, plan, storybook, camera });
       costs.push({ stage: "build", costUsd: built.costUsd, turns: built.turns });
+      figmaNote = built.figmaProblem;
 
       // Step 3: an independent reviewer checks it; blocking findings go back to the builder.
       const maxRounds = Number(values["max-review-rounds"]);
@@ -159,6 +168,7 @@ async function build() {
       reviews,
       verify,
       costs,
+      figmaNote,
       changedFiles: spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).stdout.trim(),
     }),
   );
@@ -218,10 +228,31 @@ async function release() {
   }
 }
 
-const commands: Record<string, () => Promise<void>> = { build, release };
+/**
+ * One-time sign-in to Figma's official MCP server for the machine that runs
+ * the agents. The grant is stored in CLAUDE_CONFIG_DIR (default ~/.claude),
+ * so set the same CLAUDE_CONFIG_DIR for the pipeline runs.
+ */
+async function figmaConnect() {
+  const claude = claudeExecutable();
+  const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(process.env.HOME ?? "~", ".claude");
+  console.log(`Connecting Figma for agents using ${configDir}`);
+  const added = spawnSync(claude, ["mcp", "add", "--scope", "user", "--transport", "http", FIGMA, FIGMA_OFFICIAL_URL], { encoding: "utf8" });
+  if (added.status !== 0 && !/already exists/i.test(`${added.stdout}${added.stderr}`)) {
+    throw new Error(`Could not register Figma's MCP server:\n${added.stdout}${added.stderr}`);
+  }
+  console.log("Sign in with the Figma account the agents should use (it needs view access to the design-system file).");
+  const login = spawnSync(claude, ["mcp", "login", FIGMA, ...(values["no-browser"] ? ["--no-browser"] : [])], { stdio: "inherit" });
+  if (login.status !== 0) throw new Error("Figma sign-in did not complete.");
+  const status = spawnSync(claude, ["mcp", "get", FIGMA], { encoding: "utf8" });
+  console.log(status.stdout.trim());
+  console.log(`\nDone. Run the pipeline with CLAUDE_CONFIG_DIR=${configDir} and FIGMA_MCP=official (the default).`);
+}
+
+const commands: Record<string, () => Promise<void>> = { build, release, "figma-connect": figmaConnect };
 const run = command ? commands[command] : undefined;
 if (!run) {
-  console.error("Usage: pipeline build --version <x.y.z> | pipeline release --storybook-url <url>");
+  console.error("Usage: pipeline build --version <x.y.z> | pipeline release --storybook-url <url> | pipeline figma-connect [--no-browser]");
   process.exit(2);
 }
 run().catch((error: unknown) => {

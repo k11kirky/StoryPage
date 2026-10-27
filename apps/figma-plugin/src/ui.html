@@ -7,17 +7,35 @@
       body { margin: 0; font: 12px/1.5 Inter, system-ui, sans-serif; color: var(--figma-color-text); background: var(--figma-color-bg); }
       main { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
       h1 { font-size: 14px; margin: 0; }
+      h2 { font-size: 12px; margin: 8px 0 0; text-transform: uppercase; letter-spacing: 0.04em; color: var(--figma-color-text-secondary); }
+      p { margin: 0; }
       label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
-      input, textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); color: inherit; }
+      label.inline { flex-direction: row; align-items: center; font-weight: 400; }
+      input, textarea, select { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); color: inherit; }
       textarea { min-height: 72px; resize: vertical; }
       button { font: inherit; font-weight: 600; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg-secondary); color: inherit; cursor: pointer; }
       button.primary { background: var(--figma-color-bg-brand); border-color: transparent; color: var(--figma-color-text-onbrand); }
+      button.link { padding: 0; border: 0; background: none; font-weight: 600; text-align: left; }
+      button.small { padding: 4px 8px; font-weight: 500; }
       button:disabled { opacity: 0.5; cursor: default; }
-      .row { display: flex; gap: 8px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      .grow { flex: 1; }
       .muted { color: var(--figma-color-text-secondary); }
       .card { padding: 12px; border-radius: 8px; background: var(--figma-color-bg-secondary); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
-      .error { color: var(--figma-color-text-danger); }
+      .error { color: var(--figma-color-text-danger); white-space: pre-wrap; }
+      .warning { color: var(--figma-color-text-warning); white-space: pre-wrap; }
       .ok { color: var(--figma-color-text-success); }
+      .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .summary div { padding: 8px; border-radius: 8px; background: var(--figma-color-bg-secondary); }
+      .summary strong { display: block; font-size: 16px; }
+      .component { border-top: 1px solid var(--figma-color-border); padding: 8px 0; display: flex; flex-direction: column; gap: 4px; }
+      .component select { min-width: 150px; }
+      .hint { font-size: 11px; color: var(--figma-color-text-secondary); }
+      .hint.auto { color: var(--figma-color-text-brand); }
+      details summary { cursor: pointer; font-size: 11px; color: var(--figma-color-text-secondary); }
+      table { width: 100%; border-collapse: collapse; margin-top: 4px; }
+      td { padding: 2px 4px; vertical-align: middle; }
+      td select { min-width: 0; width: 100%; }
       [hidden] { display: none !important; }
     </style>
   </head>
@@ -27,7 +45,7 @@
       <p class="muted" id="file"></p>
 
       <section id="settings" hidden>
-        <form id="settings-form" class="row" style="flex-direction: column; gap: 8px">
+        <form id="settings-form" class="row" style="flex-direction: column; align-items: stretch; gap: 8px">
           <label>Gateway URL <input name="gatewayUrl" type="url" required placeholder="https://storypage-gateway.example.com" /></label>
           <label>Publish token <input name="token" type="password" required /></label>
           <button class="primary" type="submit">Save</button>
@@ -41,9 +59,29 @@
         </div>
       </section>
 
+      <section id="picker" hidden>
+        <p>
+          Choose what developers and content editors get. Pick the <strong>page sections</strong> editors should
+          build pages from; the components they're made of come along automatically.
+        </p>
+        <div class="summary" id="summary"></div>
+        <div class="row">
+          <input id="search" class="grow" placeholder="Find a component" />
+          <select id="filter">
+            <option value="all">All components</option>
+            <option value="published">Published only</option>
+          </select>
+          <button id="suggest" class="small">Use suggestions</button>
+        </div>
+        <p class="warning" id="picker-warnings"></p>
+        <div id="components"></div>
+        <button class="primary" id="continue">Continue</button>
+      </section>
+
       <section id="review" hidden>
+        <button class="link muted" id="back">← Back to components</button>
         <p id="stats"></p>
-        <div class="card" id="summary"></div>
+        <div class="card" id="diff"></div>
         <p class="error" id="problems"></p>
         <p class="muted" id="warnings"></p>
         <label>Version <input id="version" required pattern="\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?" /></label>
