@@ -8,7 +8,11 @@ export interface ContentfulReadConfig {
   preview: boolean;
 }
 
-/** Fetches a page by slug from the Contentful Delivery/Preview API and maps it to a PageDocument. */
+/**
+ * Fetches a page by slug from the Contentful Delivery/Preview API and maps it
+ * to a PageDocument. For server-side rendering on the website, where the token
+ * stays on the server; never call it from a public static build.
+ */
 export async function fetchPage(slug: string, config: ContentfulReadConfig, registry: Registry): Promise<PageDocument | null> {
   const host = config.preview ? "preview.contentful.com" : "cdn.contentful.com";
   const url = new URL(`https://${host}/spaces/${config.spaceId}/environments/${config.environment}/entries`);

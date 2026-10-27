@@ -1,0 +1,81 @@
+# Stage 2: a designer published from Figma. The gateway committed the manifest
+# to design-system/v<version> and sent this dispatch. A Claude agent builds the
+# components in Storybook, and the result is opened as a PR for human review.
+name: Design system build
+
+on:
+  repository_dispatch:
+    types: [design-system-published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Manifest version to build (packages/design-system/manifests/<version>.json)
+        required: true
+
+concurrency:
+  group: design-system-build-${{ github.event.client_payload.version || inputs.version }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  VERSION: ${{ github.event.client_payload.version || inputs.version }}
+  BRANCH: design-system/v${{ github.event.client_payload.version || inputs.version }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BRANCH }}
+          # The agent's code runs during verification; keep the push token off disk until the push step.
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build components with Claude
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          STORYPAGE_AGENT_MAX_BUDGET_USD: ${{ vars.STORYPAGE_AGENT_MAX_BUDGET_USD || '25' }}
+        run: |
+          set +e
+          pnpm --filter @storypage/storybook-agent start --version "$VERSION"
+          code=$?
+          set -e
+          if [ "$code" = "2" ]; then echo "verified=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if [ "$code" != "0" ]; then exit "$code"; fi
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        env:
+          # A PAT or GitHub App token lets the PR trigger CI; GITHUB_TOKEN-created PRs don't.
+          PUSH_TOKEN: ${{ secrets.STORYPAGE_BOT_TOKEN || github.token }}
+        run: |
+          git config user.name "storypage-bot"
+          git config user.email "storypage-bot@users.noreply.github.com"
+          git add packages/design-system
+          git diff --cached --quiet || git commit -m "Build design system $VERSION in Storybook" -m "$(jq -r '.tasks[]' .storypage/release.json)"
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:$BRANCH"
+
+      - name: Open pull request
+        env:
+          GH_TOKEN: ${{ secrets.STORYPAGE_BOT_TOKEN || github.token }}
+          VERIFIED: ${{ steps.agent.outputs.verified }}
+        run: |
+          if gh pr view "$BRANCH" --json number >/dev/null 2>&1; then
+            gh pr edit "$BRANCH" --body-file .storypage/pr-body.md
+          else
+            draft=""
+            [ "$VERIFIED" = "true" ] || draft="--draft"
+            gh pr create --base main --head "$BRANCH" $draft \
+              --title "Design system $VERSION" \
+              --body-file .storypage/pr-body.md
+          fi

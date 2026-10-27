@@ -61,6 +61,7 @@ export interface ComposeContext {
   environment: string;
   locale: string;
   model: string;
+  previewSigningSecret: string;
 }
 
 export interface ComposeResult {
@@ -97,7 +98,7 @@ export function createTools(ctx: ComposeContext, onSaved: (draft: Draft) => void
           status: "draft",
           created: result.created,
           pageId: result.pageId,
-          previewUrl: release.storybookUrl ? previewUrl(release.storybookUrl, page.slug) : null,
+          previewUrl: release.storybookUrl ? previewUrl(release.storybookUrl, page.slug, ctx.previewSigningSecret) : null,
           contentfulUrl: entryEditorUrl(ctx.spaceId, ctx.environment, result.pageId),
         });
       } catch (error) {

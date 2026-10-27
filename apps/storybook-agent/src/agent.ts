@@ -1,4 +1,5 @@
 import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { agentEnv } from "./env.js";
 import { createPermissionPolicy } from "./permissions.js";
 import { SYSTEM_APPEND } from "./prompt.js";
 
@@ -49,6 +50,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       tools: ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
       permissionMode: "default",
       canUseTool: createPermissionPolicy(options.repoRoot),
+      env: agentEnv(),
       maxTurns: 200,
       maxBudgetUsd: options.maxBudgetUsd ?? Number(process.env.STORYPAGE_AGENT_MAX_BUDGET_USD ?? 25),
       ...(options.resume ? { resume: options.resume } : {}),

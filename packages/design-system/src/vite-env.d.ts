@@ -1,5 +1,4 @@
 interface ImportMetaEnv {
-  readonly STORYBOOK_CONTENTFUL_SPACE_ID?: string;
-  readonly STORYBOOK_CONTENTFUL_ENVIRONMENT?: string;
-  readonly STORYBOOK_CONTENTFUL_PREVIEW_TOKEN?: string;
+  /** Public URL of the StoryPage gateway, which serves signed draft previews. */
+  readonly STORYBOOK_PREVIEW_API_URL?: string;
 }

@@ -42,6 +42,9 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.0
         version: 22.0.1
+      '@storypage/contentful':
+        specifier: workspace:*
+        version: link:../../packages/contentful
       '@storypage/schema':
         specifier: workspace:*
         version: link:../../packages/schema

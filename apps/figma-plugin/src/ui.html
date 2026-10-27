@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; font: 12px/1.5 Inter, system-ui, sans-serif; color: var(--figma-color-text); background: var(--figma-color-bg); }
+      main { display: flex; flex-direction: column; gap: 12px; padding: 16px; }
+      h1 { font-size: 14px; margin: 0; }
+      label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+      input, textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); color: inherit; }
+      textarea { min-height: 72px; resize: vertical; }
+      button { font: inherit; font-weight: 600; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg-secondary); color: inherit; cursor: pointer; }
+      button.primary { background: var(--figma-color-bg-brand); border-color: transparent; color: var(--figma-color-text-onbrand); }
+      button:disabled { opacity: 0.5; cursor: default; }
+      .row { display: flex; gap: 8px; }
+      .muted { color: var(--figma-color-text-secondary); }
+      .card { padding: 12px; border-radius: 8px; background: var(--figma-color-bg-secondary); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; }
+      .error { color: var(--figma-color-text-danger); }
+      .ok { color: var(--figma-color-text-success); }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Publish design system</h1>
+      <p class="muted" id="file"></p>
+
+      <section id="settings" hidden>
+        <form id="settings-form" class="row" style="flex-direction: column; gap: 8px">
+          <label>Gateway URL <input name="gatewayUrl" type="url" required placeholder="https://storypage-gateway.example.com" /></label>
+          <label>Publish token <input name="token" type="password" required /></label>
+          <button class="primary" type="submit">Save</button>
+        </form>
+      </section>
+
+      <section id="scan" hidden>
+        <div class="row">
+          <button class="primary" id="scan-button">Scan file</button>
+          <button id="edit-settings">Settings</button>
+        </div>
+      </section>
+
+      <section id="review" hidden>
+        <p id="stats"></p>
+        <div class="card" id="summary"></div>
+        <p class="error" id="problems"></p>
+        <p class="muted" id="warnings"></p>
+        <label>Version <input id="version" required pattern="\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?" /></label>
+        <p class="muted" id="bump"></p>
+        <label>What changed? <textarea id="changelog" placeholder="Shown in the release PR, Storybook and Contentful"></textarea></label>
+        <button class="primary" id="publish-button">Publish</button>
+      </section>
+
+      <p id="status"></p>
+    </main>
+  </body>
+</html>

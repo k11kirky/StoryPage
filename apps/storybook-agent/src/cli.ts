@@ -23,6 +23,7 @@ import {
   type Registry,
 } from "@storypage/schema";
 import { runAgent } from "./agent.js";
+import { verifyEnv } from "./env.js";
 import { DESIGN_SYSTEM_DIR, findRepoRoot, MANIFESTS_DIR, OUTPUT_DIR } from "./paths.js";
 import { planTasks } from "./plan.js";
 import { buildFixPrompt, buildPrompt } from "./prompt.js";
@@ -39,7 +40,12 @@ const repoRoot = findRepoRoot();
 const readJson = <T>(file: string): T => JSON.parse(readFileSync(path.join(repoRoot, file), "utf8")) as T;
 
 function run(command: string, args: string[]): { ok: boolean; output: string } {
-  const result = spawnSync(command, args, { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  const result = spawnSync(command, args, {
+    cwd: repoRoot,
+    env: verifyEnv(),
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   return { ok: result.status === 0, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }
 

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { diffManifests, parseManifest, type DesignSystemManifest } from "@storypage/schema";
+import { agentEnv, verifyEnv } from "../src/env.js";
 import { createPermissionPolicy, isAllowedCommand, isAllowedWrite } from "../src/permissions.js";
 import { planTasks } from "../src/plan.js";
 import { buildPrompt } from "../src/prompt.js";
@@ -34,6 +35,15 @@ describe("permissions", () => {
     const signal = new AbortController().signal;
     expect((await policy("WebFetch", { url: "https://x" }, { signal } as never))?.behavior).toBe("deny");
     expect((await policy("Read", { file_path: "/etc/passwd" }, { signal } as never))?.behavior).toBe("allow");
+  });
+});
+
+describe("environment", () => {
+  const ciEnv = { PATH: "/bin", HOME: "/home/runner", ANTHROPIC_API_KEY: "sk", GITHUB_TOKEN: "ghs", CONTENTFUL_MANAGEMENT_TOKEN: "cfm" };
+
+  it("gives verification no credentials and the agent only Anthropic's", () => {
+    expect(verifyEnv(ciEnv)).toEqual({ PATH: "/bin", HOME: "/home/runner" });
+    expect(agentEnv(ciEnv)).toEqual({ PATH: "/bin", HOME: "/home/runner", ANTHROPIC_API_KEY: "sk" });
   });
 });
 

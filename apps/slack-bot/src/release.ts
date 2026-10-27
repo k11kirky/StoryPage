@@ -1,4 +1,4 @@
-import { getLiveRelease, type LiveRelease, type PlainClientAPI } from "@storypage/contentful";
+import { getLiveRelease, signPreview, type LiveRelease, type PlainClientAPI } from "@storypage/contentful";
 import type { Registry } from "@storypage/schema";
 
 /**
@@ -33,10 +33,14 @@ export class ReleaseCache {
   }
 }
 
-export function previewUrl(storybookUrl: string, slug: string): string {
+/** A signed, expiring link to the draft rendered by Storybook's preview story. */
+export function previewUrl(storybookUrl: string, slug: string, signingSecret: string): string {
+  const { exp, sig } = signPreview(slug, signingSecret);
   const url = new URL("iframe.html", `${storybookUrl.replace(/\/$/, "")}/`);
   url.searchParams.set("id", "pages-contentful-preview--page");
   url.searchParams.set("viewMode", "story");
   url.searchParams.set("slug", slug);
+  url.searchParams.set("exp", String(exp));
+  url.searchParams.set("sig", sig);
   return url.toString();
 }

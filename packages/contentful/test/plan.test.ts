@@ -96,3 +96,16 @@ describe("planContentModel", () => {
     expect(plan.find((c) => c.id === "blogPost")).toBeUndefined();
   });
 });
+
+describe("preview tokens", async () => {
+  const { signPreview, verifyPreview } = await import("../src/preview-token.js");
+
+  it("accepts a valid signature and rejects tampering or expiry", () => {
+    const token = signPreview("launch", "secret", 60, 1_000_000);
+    expect(verifyPreview("launch", token, "secret", 1_000_000)).toBe(true);
+    expect(verifyPreview("other", token, "secret", 1_000_000)).toBe(false);
+    expect(verifyPreview("launch", token, "wrong", 1_000_000)).toBe(false);
+    expect(verifyPreview("launch", { ...token, exp: token.exp + 1 }, "secret", 1_000_000)).toBe(false);
+    expect(verifyPreview("launch", token, "secret", 1_000_000 + 61_000)).toBe(false);
+  });
+});

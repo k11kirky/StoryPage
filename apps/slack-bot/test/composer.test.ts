@@ -89,6 +89,7 @@ describe("compose", () => {
       environment: "master",
       locale: "en-US",
       model: "claude-opus-5-5",
+      previewSigningSecret: "test-secret",
     };
 
     const result = await compose(ctx, [], "Make a page for our summit");

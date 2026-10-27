@@ -7,6 +7,7 @@ export const PUBLISH_ACTION = "storypage_publish";
 
 export interface DraftLinks {
   storybookUrl: string;
+  previewSigningSecret: string;
   spaceId: string;
   environment: string;
 }
@@ -28,7 +29,7 @@ export function replyBlocks(reply: string, draft: Draft | undefined, links: Draf
       type: "actions",
       elements: [
         ...(links.storybookUrl
-          ? [{ type: "button" as const, text: { type: "plain_text" as const, text: "Preview" }, url: previewUrl(links.storybookUrl, draft.slug) }]
+          ? [{ type: "button" as const, text: { type: "plain_text" as const, text: "Preview" }, url: previewUrl(links.storybookUrl, draft.slug, links.previewSigningSecret) }]
           : []),
         {
           type: "button",

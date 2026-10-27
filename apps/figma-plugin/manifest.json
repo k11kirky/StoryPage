@@ -1,0 +1,16 @@
+{
+  "name": "StoryPage Publisher",
+  "id": "storypage-publisher",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "permissions": ["currentuser"],
+  "enablePrivatePluginApi": true,
+  "networkAccess": {
+    "allowedDomains": ["https://storypage-gateway.example.com", "http://localhost:8787"],
+    "devAllowedDomains": ["http://localhost:8787"],
+    "reasoning": "Publishes the design system to the StoryPage gateway, which starts the Storybook and Contentful pipeline."
+  }
+}
