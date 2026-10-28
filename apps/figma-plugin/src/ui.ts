@@ -53,9 +53,9 @@ let resolved: ResolvedSelection = { components: [], included: [], warnings: [] }
 let pendingManifest: DesignSystemManifestInput | null = null;
 let previews: Record<string, string> = {};
 
-function show(section: "settings" | "scan" | "picker" | "review") {
+function show(section: "settings" | "picker" | "review") {
   $("settings").hidden = section !== "settings";
-  $("scan").hidden = section === "settings";
+  $("scan").hidden = section !== "picker";
   $("picker").hidden = section !== "picker";
   $("review").hidden = section !== "review";
 }
@@ -271,6 +271,11 @@ interface PublishResponse {
 
 function continueToReview() {
   if (!base) return;
+  if (!settings) {
+    status("Add the StoryPage connection settings to publish from the plugin.");
+    show("settings");
+    return;
+  }
   pendingManifest = { ...base, components: resolved.components };
   status("Exporting previews…");
   ($("continue") as HTMLButtonElement).disabled = true;
@@ -348,7 +353,13 @@ window.onmessage = (event: MessageEvent<{ pluginMessage?: ToUi }>) => {
         (form.elements.namedItem("gatewayUrl") as HTMLInputElement).value = settings.gatewayUrl;
         (form.elements.namedItem("token") as HTMLInputElement).value = settings.token;
       }
-      show(settings ? "scan" : "settings");
+      // Scan straight away: choosing components (and saving variable values) needs no connection.
+      if (!base) {
+        status("Reading components, variables and styles…");
+        post({ type: "scan" });
+      } else {
+        show("picker");
+      }
       break;
     case "scan-result":
       ($("scan-button") as HTMLButtonElement).disabled = false;
@@ -378,6 +389,7 @@ $("settings-form").addEventListener("submit", (event) => {
   post({ type: "save-settings", settings: { gatewayUrl: String(data.get("gatewayUrl")), token: String(data.get("token")) } });
 });
 $("edit-settings").addEventListener("click", () => show("settings"));
+$("settings-form").addEventListener("reset", () => show("picker"));
 $("scan-button").addEventListener("click", () => {
   ($("scan-button") as HTMLButtonElement).disabled = true;
   status("Scanning components, variables and styles…");

@@ -410,3 +410,4 @@ export function resolveSelection(
   const included = [...reasons].map(([name, reason]) => ({ name, tier: tiers.get(name)!, reason }));
   return { components, included, warnings: [...new Set(warnings)] };
 }
+export * from "./figma-variables.js";

@@ -1,36 +1,8 @@
-import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it } from "vitest";
 import { signPreview } from "@storypage/contentful";
-import { toRegistry, type DesignSystemManifest } from "@storypage/schema";
-import { createApp, DISPATCH_EVENT, MANIFESTS_DIR, REGISTRY_PATH } from "../src/app.js";
-import type { RepoFile, RepoStore } from "../src/repo.js";
-
-const seedJson = readFileSync(new URL("../../../packages/design-system/manifests/1.0.0.json", import.meta.url), "utf8");
-const seed = JSON.parse(seedJson) as DesignSystemManifest;
-const TOKEN = "secret-token";
-const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
-
-class FakeRepo implements RepoStore {
-  files = new Map<string, string>();
-  branches = new Map<string, RepoFile[]>();
-  dispatches: { eventType: string; payload: Record<string, unknown> }[] = [];
-  async readFile(path: string) {
-    return this.files.get(path) ?? null;
-  }
-  async branchExists(branch: string) {
-    return this.branches.has(branch);
-  }
-  async commitToNewBranch(branch: string, files: RepoFile[]) {
-    this.branches.set(branch, files);
-    return "abc123";
-  }
-  async dispatch(eventType: string, payload: Record<string, unknown>) {
-    this.dispatches.push({ eventType, payload });
-  }
-  actionsUrl() {
-    return "https://github.com/acme/site/actions";
-  }
-}
+import type { DesignSystemManifest } from "@storypage/schema";
+import { createApp, DISPATCH_EVENT, MANIFESTS_DIR } from "../src/app.js";
+import { FakeRepo, gatewayFor, PNG, seed, seededRepo, TOKEN } from "./helpers.js";
 
 function nextVersion(version: string, mutate: (m: DesignSystemManifest) => void = () => {}) {
   const manifest = structuredClone(seed);
@@ -50,10 +22,8 @@ describe("gateway", () => {
     });
 
   beforeEach(() => {
-    repo = new FakeRepo();
-    repo.files.set(`${MANIFESTS_DIR}/1.0.0.json`, seedJson);
-    repo.files.set(REGISTRY_PATH, JSON.stringify(toRegistry(seed as never)));
-    app = createApp({ repo, publishToken: TOKEN });
+    repo = seededRepo();
+    app = gatewayFor(repo);
   });
 
   it("rejects requests without the publish token", async () => {
@@ -124,9 +94,7 @@ describe("gateway", () => {
 
   it("serves draft pages only for signed, unexpired preview links", async () => {
     const page = { title: "Launch", slug: "events/launch", sections: [] };
-    const previewApp = createApp({
-      repo,
-      publishToken: TOKEN,
+    const previewApp = gatewayFor(repo, {
       preview: { signingSecret: "s3cret", loadPage: async (slug) => (slug === page.slug ? page : null) },
     });
     const { exp, sig } = signPreview(page.slug, "s3cret");

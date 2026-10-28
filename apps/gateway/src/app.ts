@@ -1,29 +1,30 @@
-import { timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import path from "node:path";
+import { serveStatic } from "@hono/node-server/serve-static";
+import type { WebhookLibraryPublishPayload } from "@figma/rest-api-spec";
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
 import { z } from "zod";
+import { verifyPreview } from "@storypage/contentful";
+import type { FigmaClient } from "@storypage/figma";
 import {
-  checkVersionBump,
-  diffManifests,
   DesignSystemManifestSchema,
+  diffManifests,
   lintManifest,
   ManifestError,
   parseManifest,
   suggestNextVersion,
   summarizeDiff,
   type DesignSystemManifest,
-  type Registry,
+  type PageDocument,
 } from "@storypage/schema";
-import { verifyPreview } from "@storypage/contentful";
-import type { PageDocument } from "@storypage/schema";
-import type { RepoFile, RepoStore } from "./repo.js";
+import { PublishError, type ReleaseService } from "./releases.js";
+import { LocalRunner } from "./runners/local.js";
+import type { Runner } from "./runners/types.js";
 
-export const MANIFESTS_DIR = "packages/design-system/manifests";
-export const REGISTRY_PATH = "packages/design-system/src/generated/registry.json";
-export const DISPATCH_EVENT = "design-system-published";
-
-const PNG_BASE64_PREFIX = "iVBORw0KGgo";
+export { branchFor, MANIFESTS_DIR, REGISTRY_PATH } from "./releases.js";
+export { DISPATCH_EVENT } from "./runners/github.js";
 
 const PublishRequestSchema = z.object({
   manifest: z.unknown(),
@@ -38,33 +39,40 @@ export interface PreviewOptions {
   loadPage(slug: string): Promise<PageDocument | null>;
 }
 
+export interface FigmaWebhookOptions {
+  client: FigmaClient;
+  /** The passcode given when the webhook was registered. */
+  passcode: string;
+  /** Library files StoryPage builds; publishes of other files are ignored. */
+  fileKeys: string[];
+}
+
 export interface GatewayOptions {
-  repo: RepoStore;
+  releases: ReleaseService;
+  runner: Runner;
   /** Shared secret the Figma plugin sends as a bearer token. */
   publishToken: string;
   /** Enables `GET /preview/pages/<slug>` for the Storybook preview story. */
   preview?: PreviewOptions | undefined;
+  /** Enables `POST /webhooks/figma`: releases start from Figma's own "Publish library". */
+  figma?: FigmaWebhookOptions | undefined;
+  /** Enables `POST /webhooks/github` (hosted runner): merged design-system PRs are released. */
+  githubWebhookSecret?: string | undefined;
 }
 
-function authorized(c: Context, token: string): boolean {
-  const header = c.req.header("authorization") ?? "";
-  const given = Buffer.from(header.replace(/^Bearer\s+/i, ""));
-  const expected = Buffer.from(token);
-  return given.length === expected.length && timingSafeEqual(given, expected);
-}
+const sameSecret = (given: string, expected: string) => {
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+};
 
-async function currentManifest(repo: RepoStore): Promise<DesignSystemManifest | null> {
-  const registryJson = await repo.readFile(REGISTRY_PATH);
-  if (!registryJson) return null;
-  const { version } = JSON.parse(registryJson) as Registry;
-  const manifestJson = await repo.readFile(`${MANIFESTS_DIR}/${version}.json`);
-  return manifestJson ? parseManifest(JSON.parse(manifestJson)) : null;
-}
+const authorized = (c: Context, token: string) => sameSecret((c.req.header("authorization") ?? "").replace(/^Bearer\s+/i, ""), token);
 
-export const branchFor = (version: string) => `design-system/v${version}`;
-
-export function createApp({ repo, publishToken, preview }: GatewayOptions) {
+export function createApp(options: GatewayOptions) {
+  const { releases, runner, publishToken, preview } = options;
   const app = new Hono();
+
+  app.get("/health", (c) => c.json({ ok: true, runner: runner.kind }));
 
   // Draft pages for the Storybook preview story, authorized by a signed link
   // from the Slack bot instead of a token baked into the Storybook bundle.
@@ -79,7 +87,62 @@ export function createApp({ repo, publishToken, preview }: GatewayOptions) {
     return page ? c.json(page) : c.json({ error: `No page with slug "${slug}"` }, 404);
   });
 
-  // The Figma plugin UI runs in a sandboxed iframe with a null origin.
+  // ---------------------------------------------------------------------------
+  // Figma: designers publish their library as usual; this starts a release.
+  // ---------------------------------------------------------------------------
+  app.post("/webhooks/figma", async (c) => {
+    if (!options.figma) return c.json({ error: "Figma webhooks are not configured" }, 404);
+    const event = (await c.req.json()) as { event_type?: string; passcode?: string; file_key?: string };
+    if (!sameSecret(event.passcode ?? "", options.figma.passcode)) return c.json({ error: "Invalid passcode" }, 401);
+    if (event.event_type !== "LIBRARY_PUBLISH") return c.json({ ok: true });
+    if (options.figma.fileKeys.length && !options.figma.fileKeys.includes(event.file_key ?? "")) return c.json({ ok: true, ignored: true });
+    // Figma expects a quick answer; the release runs in the background and reports to Slack.
+    void releases.publishLibrary(event as WebhookLibraryPublishPayload, options.figma.client).catch((error: unknown) => {
+      console.error("Library publish failed", error);
+    });
+    return c.json({ ok: true, accepted: true }, 202);
+  });
+
+  // ---------------------------------------------------------------------------
+  // GitHub (hosted runner): release a design-system PR once it's merged.
+  // ---------------------------------------------------------------------------
+  app.post("/webhooks/github", async (c) => {
+    if (!options.githubWebhookSecret || !runner.release) return c.json({ error: "GitHub webhooks are not configured" }, 404);
+    const raw = await c.req.text();
+    const signature = `sha256=${createHmac("sha256", options.githubWebhookSecret).update(raw).digest("hex")}`;
+    if (!sameSecret(c.req.header("x-hub-signature-256") ?? "", signature)) return c.json({ error: "Invalid signature" }, 401);
+    if (c.req.header("x-github-event") !== "pull_request") return c.json({ ok: true });
+    const event = JSON.parse(raw) as { action?: string; pull_request?: { merged?: boolean; head?: { ref?: string } } };
+    const version = /^design-system\/v(.+)$/.exec(event.pull_request?.head?.ref ?? "")?.[1];
+    if (event.action !== "closed" || !event.pull_request?.merged || !version) return c.json({ ok: true });
+    const { statusUrl } = await runner.release(version);
+    return c.json({ ok: true, statusUrl }, 202);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Hosted runner: job status, and the deployed Storybook.
+  // ---------------------------------------------------------------------------
+  const local = runner instanceof LocalRunner ? runner : null;
+  app.get("/jobs/:id", (c) => {
+    const job = local?.jobs.find((j) => j.id === c.req.param("id"));
+    if (!job) return c.json({ error: "No such job" }, 404);
+    const { log, ...summary } = job;
+    // Logs only for the team (they can mention file paths and agent output).
+    return c.json(authorized(c, publishToken) ? job : { ...summary, logLines: log.length });
+  });
+  if (local) {
+    app.use(
+      "/storybook/*",
+      serveStatic({
+        root: path.relative(process.cwd(), local.storybookDir),
+        rewriteRequestPath: (p) => p.replace(/^\/storybook/, "") || "/index.html",
+      }),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plugin API (bearer token). The plugin UI runs in a sandboxed iframe with a null origin.
+  // ---------------------------------------------------------------------------
   app.use("/api/*", cors({ origin: "*", allowHeaders: ["authorization", "content-type"], allowMethods: ["GET", "POST"] }));
   app.use("/api/*", bodyLimit({ maxSize: 40 * 1024 * 1024 }));
   app.use("/api/*", async (c, next) => {
@@ -88,10 +151,8 @@ export function createApp({ repo, publishToken, preview }: GatewayOptions) {
     return next();
   });
 
-  app.get("/health", (c) => c.json({ ok: true }));
-
   app.get("/api/design-system/current", async (c) => {
-    const manifest = await currentManifest(repo);
+    const manifest = await releases.currentManifest();
     return manifest ? c.json(manifest) : c.json({ error: "No design system has been published yet" }, 404);
   });
 
@@ -101,7 +162,7 @@ export function createApp({ repo, publishToken, preview }: GatewayOptions) {
     if (!body.success) return c.json({ error: body.error.message }, 400);
     const parsed = DesignSystemManifestSchema.safeParse(body.data.manifest);
     if (!parsed.success) return c.json({ error: "Invalid manifest", problems: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`) }, 422);
-    const previous = await currentManifest(repo);
+    const previous = await releases.currentManifest();
     const diff = diffManifests(previous, parsed.data);
     return c.json({
       currentVersion: previous?.version ?? null,
@@ -117,7 +178,6 @@ export function createApp({ repo, publishToken, preview }: GatewayOptions) {
   app.post("/api/design-system/publish", async (c) => {
     const body = PublishRequestSchema.safeParse(await c.req.json());
     if (!body.success) return c.json({ error: body.error.message }, 400);
-
     let manifest: DesignSystemManifest;
     try {
       manifest = parseManifest(body.data.manifest);
@@ -128,54 +188,12 @@ export function createApp({ repo, publishToken, preview }: GatewayOptions) {
       }
       throw error;
     }
-
-    const previous = await currentManifest(repo);
-    const diff = diffManifests(previous, manifest);
-    if (diff.isEmpty) return c.json({ error: "Nothing changed since the last published version." }, 409);
-    const versionProblem = checkVersionBump(diff);
-    if (versionProblem) {
-      return c.json({ error: versionProblem, suggestedVersion: suggestNextVersion(diff.from, diff.requiredBump) }, 409);
+    try {
+      return c.json(await releases.publish(manifest, body.data.previews), 202);
+    } catch (error) {
+      if (error instanceof PublishError) return c.json({ error: error.message, ...error.details }, error.status);
+      throw error;
     }
-    const branch = branchFor(manifest.version);
-    if ((await repo.branchExists(branch)) || (await repo.readFile(`${MANIFESTS_DIR}/${manifest.version}.json`))) {
-      return c.json({ error: `Version ${manifest.version} has already been published.` }, 409);
-    }
-
-    const files: RepoFile[] = [];
-    const componentNames = new Set(manifest.components.map((component) => component.name));
-    for (const [name, png] of Object.entries(body.data.previews)) {
-      if (!componentNames.has(name)) continue;
-      if (!png.startsWith(PNG_BASE64_PREFIX)) return c.json({ error: `Preview for ${name} is not a PNG` }, 400);
-      const previewPath = `${manifest.version}/previews/${name}.png`;
-      files.push({ path: `${MANIFESTS_DIR}/${previewPath}`, content: png, encoding: "base64" });
-      manifest.components.find((component) => component.name === name)!.preview = previewPath;
-    }
-    files.unshift({
-      path: `${MANIFESTS_DIR}/${manifest.version}.json`,
-      content: `${JSON.stringify(manifest, null, 2)}\n`,
-      encoding: "utf-8",
-    });
-
-    const message = [
-      `Publish design system ${manifest.version} from Figma`,
-      "",
-      `Published by ${manifest.publishedBy.name} from "${manifest.source.figmaFileName}".`,
-      ...(manifest.changelog ? ["", manifest.changelog] : []),
-    ].join("\n");
-    const sha = await repo.commitToNewBranch(branch, files, message);
-    await repo.dispatch(DISPATCH_EVENT, { version: manifest.version, branch });
-
-    return c.json(
-      {
-        version: manifest.version,
-        branch,
-        commit: sha,
-        requiredBump: diff.requiredBump,
-        summary: summarizeDiff(diff),
-        statusUrl: repo.actionsUrl(),
-      },
-      202,
-    );
   });
 
   return app;

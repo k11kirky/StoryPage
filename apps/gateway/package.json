@@ -7,7 +7,8 @@
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "figma:webhook": "tsx src/register-figma-webhook.ts"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.0",
@@ -15,6 +16,10 @@
     "@storypage/schema": "workspace:*",
     "hono": "^4.9.0",
     "zod": "^4.1.0",
-    "@storypage/contentful": "workspace:*"
+    "@storypage/contentful": "workspace:*",
+    "@storypage/figma": "workspace:*"
+  },
+  "devDependencies": {
+    "@figma/rest-api-spec": "^0.46.0"
   }
 }

@@ -40,6 +40,32 @@ A version moves through the system like this:
 
 Every page entry stores the `designSystemVersion` it was built with.
 
+## How a release starts
+
+Designers already know how to ship a design system in Figma: they build components with variants and properties, define variables and styles, and **Publish library** so other files can use it. StoryPage starts from that same action.
+
+1. Figma sends a `LIBRARY_PUBLISH` webhook to the gateway (`/webhooks/figma`). The payload carries the file, who published it, the publish description, and which components, styles and variables changed.
+2. The gateway reads the library through Figma's REST API (`packages/figma`):
+   - components and component sets, with their properties, variants and default-variant layout;
+   - text and effect styles;
+   - the choices made in the plugin (shared plugin data on each component);
+   - variables, from the REST variables API on Enterprise plans, or otherwise from the snapshot the plugin saves in the file.
+3. It applies the designer's choices (`resolveSelection`) and diffs against the released version. If nothing StoryPage builds changed, it stops quietly. Otherwise the change decides the semver bump, and the publish description becomes the changelog.
+4. It commits the manifest and previews (rendered by Figma's image API) to `design-system/v<version>` and hands the release to the runner. Progress, and anything a designer must fix, is posted to Slack (`SLACK_NOTIFY_WEBHOOK_URL`).
+
+The plugin's own *Publish now* button runs steps 3–4 the same way, for files that aren't published as libraries. The plugin and the REST reader share their conversion code (`packages/schema/src/figma*.ts`), so both produce the same manifest; tests run one library through both.
+
+## Where the agents run
+
+`apps/pipeline` holds every stage; the runner (`apps/gateway/src/runners`) only decides where it runs.
+
+- **`github` (default, open source):** the gateway sends a `repository_dispatch`. `design-system-build.yml` runs the build and review agents and opens the PR. `design-system-release.yml` deploys Storybook and runs the content agent after merge.
+- **`local` (hosted, or one self-hosted machine):** the gateway runs `pipeline build` itself, one job at a time, in a checkout under `STORYPAGE_WORKDIR`. It then:
+  - pushes the agents' commit and opens the PR through the GitHub API;
+  - on GitHub's "PR merged" webhook, builds Storybook, serves it at `/storybook/`, and runs `pipeline release`.
+
+  Git credentials are passed per command and never written to the checkout. Pipeline commands get only Anthropic, Figma, Contentful and StoryPage settings, never the gateway's GitHub token or publish token. Job status is at `/jobs/<id>`. The `Dockerfile` packages this, and its `/data` volume keeps the checkout, the hosted Storybook and the Figma MCP sign-in.
+
 ## The agentic pipeline
 
 Each stage is a **Claude Agent SDK** session started by `runStage()` (`packages/agents`). A stage has:

@@ -4,10 +4,19 @@
  * layout tree and a PNG preview). Runs in the plugin's main thread.
  */
 import {
+  boxShadow,
+  colorToHex,
+  convertTextStyle,
+  convertVariables,
+  fontWeightFromStyle,
+  isVariableAlias,
   parseDescription,
   propsFromFigma,
   splitComponentName,
   suggestTier,
+  type CollectionLike,
+  type VariableLike,
+  type VariableSnapshot,
   type ComponentDraft,
   type ComponentSelection,
   type FigmaPropertyDefinition,
@@ -75,172 +84,99 @@ export async function exportPreviews(components: { name: string; nodeId: string 
   return previews;
 }
 
-const DIMENSION_SCOPES = new Set<VariableScope>([
-  "CORNER_RADIUS",
-  "WIDTH_HEIGHT",
-  "GAP",
-  "STROKE_FLOAT",
-  "FONT_SIZE",
-  "LINE_HEIGHT",
-  "LETTER_SPACING",
-  "PARAGRAPH_SPACING",
-  "PARAGRAPH_INDENT",
-  "EFFECT_FLOAT",
-  "ALL_SCOPES",
-]);
+export { colorToHex, fontWeightFromStyle };
 
-const FONT_WEIGHTS: [RegExp, number][] = [
-  [/thin|hairline/i, 100],
-  [/extra\s*light|ultra\s*light/i, 200],
-  [/light/i, 300],
-  [/medium/i, 500],
-  [/semi\s*bold|demi\s*bold/i, 600],
-  [/extra\s*bold|ultra\s*bold/i, 800],
-  [/black|heavy/i, 900],
-  [/bold/i, 700],
-];
+const isAlias = isVariableAlias;
 
-export function fontWeightFromStyle(style: string): number {
-  return FONT_WEIGHTS.find(([pattern]) => pattern.test(style))?.[1] ?? 400;
-}
+/** Plugin data key prefix for the variables snapshot (chunked: plugin data entries are limited in size). */
+export const VARIABLES_KEY = "variables";
+const CHUNK = 90_000;
 
-const hex = (n: number) => Math.round(n * 255).toString(16).padStart(2, "0").toUpperCase();
-
-export function colorToHex(color: RGB | RGBA): string {
-  const alpha = "a" in color && color.a < 1 ? hex(color.a) : "";
-  return `#${hex(color.r)}${hex(color.g)}${hex(color.b)}${alpha}`;
-}
-
-/** Null for variable types with no CSS token equivalent (easing, timing). */
-function tokenType(variable: Variable): TokenType | null {
-  switch (variable.resolvedType) {
-    case "COLOR":
-      return "color";
-    case "BOOLEAN":
-      return "boolean";
-    case "STRING":
-      return variable.scopes.includes("FONT_FAMILY") ? "fontFamily" : "string";
-    case "FLOAT":
-      if (variable.scopes.includes("FONT_WEIGHT")) return "fontWeight";
-      return variable.scopes.some((s) => DIMENSION_SCOPES.has(s)) ? "dimension" : "number";
-    default:
-      return null;
-  }
-}
-
-const isAlias = (value: unknown): value is VariableAlias =>
-  typeof value === "object" && value !== null && "type" in value && value.type === "VARIABLE_ALIAS";
-
-/** A literal variable value as a token value; null for values we can't express. */
-function literal(value: VariableValue): string | number | boolean | null {
-  if (typeof value !== "object") return value;
-  if ("r" in value) return colorToHex(value);
-  // Composed color with a literal color and an aliased opacity: keep the color.
-  if ("color" in value && !isAlias(value.color)) return colorToHex(value.color);
-  return null;
-}
-
-async function extractTokens(warnings: string[]) {
-  const collections = await figma.variables.getLocalVariableCollectionsAsync();
-  const variables = new Map<string, Variable>();
-  for (const collection of collections) {
-    for (const id of collection.variableIds) {
-      const variable = await figma.variables.getVariableByIdAsync(id);
-      if (variable) variables.set(id, variable);
+/**
+ * Reads local variables plus the library variables they alias, as a raw
+ * snapshot. Saved in the file so the server can build tokens on Figma plans
+ * whose REST API has no variables endpoint.
+ */
+async function variableSnapshot(): Promise<VariableSnapshot> {
+  const collections: CollectionLike[] = [];
+  const variables = new Map<string, VariableLike>();
+  const toLike = (v: Variable): VariableLike => ({
+    id: v.id,
+    name: v.name,
+    resolvedType: v.resolvedType,
+    valuesByMode: v.valuesByMode as Record<string, unknown>,
+    scopes: v.scopes,
+    description: v.description,
+    hiddenFromPublishing: v.hiddenFromPublishing,
+    variableCollectionId: v.variableCollectionId,
+    remote: v.remote,
+  });
+  const visit = async (id: string, depth = 0): Promise<void> => {
+    if (variables.has(id) || depth > 10) return;
+    const variable = await figma.variables.getVariableByIdAsync(id);
+    if (!variable) return;
+    variables.set(id, toLike(variable));
+    for (const value of Object.values(variable.valuesByMode)) {
+      if (isAlias(value)) await visit(value.id, depth + 1);
     }
-  }
-
-  // Aliases to variables outside this file (libraries) are flattened to values.
-  const resolveRemote = async (alias: VariableAlias, depth = 0): Promise<TokenValue | null> => {
-    const target = await figma.variables.getVariableByIdAsync(alias.id);
-    if (!target || depth > 10) return null;
-    const collection = await figma.variables.getVariableCollectionByIdAsync(target.variableCollectionId);
-    const value = collection ? target.valuesByMode[collection.defaultModeId] : undefined;
-    if (value === undefined) return null;
-    if (isAlias(value)) return resolveRemote(value, depth + 1);
-    return literal(value);
   };
-
-  const tokenCollections: TokenCollection[] = [];
-  const tokens: Token[] = [];
-  for (const collection of collections) {
-    const modeNames = new Map(collection.modes.map((m) => [m.modeId, m.name]));
-    tokenCollections.push({
+  for (const collection of await figma.variables.getLocalVariableCollectionsAsync()) {
+    collections.push({
+      id: collection.id,
       name: collection.name,
-      modes: collection.modes.map((m) => m.name),
-      defaultMode: modeNames.get(collection.defaultModeId) ?? collection.modes[0]!.name,
+      modes: collection.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+      defaultModeId: collection.defaultModeId,
+      variableIds: [...collection.variableIds],
+      hiddenFromPublishing: collection.hiddenFromPublishing,
     });
-    for (const id of collection.variableIds) {
-      const variable = variables.get(id);
-      if (!variable || variable.hiddenFromPublishing) continue;
-      const type = tokenType(variable);
-      if (!type) continue;
-      const values: Record<string, TokenValue> = {};
-      for (const [modeId, value] of Object.entries(variable.valuesByMode)) {
-        const mode = modeNames.get(modeId);
-        if (!mode) continue;
-        if (isAlias(value)) {
-          const local = variables.get(value.id);
-          const resolved = local ? { alias: local.name } : await resolveRemote(value);
-          if (resolved === null) warnings.push(`Could not resolve alias in ${variable.name} (${mode})`);
-          else values[mode] = resolved;
-        } else {
-          const resolved = literal(value);
-          if (resolved === null) warnings.push(`Skipped unsupported value in ${variable.name} (${mode})`);
-          else values[mode] = resolved;
-        }
-      }
-      tokens.push({
-        name: variable.name,
-        type,
-        collection: collection.name,
-        ...(variable.description ? { description: variable.description } : {}),
-        values,
+    for (const id of collection.variableIds) await visit(id);
+  }
+  // Collections of aliased library variables, so their default values resolve.
+  for (const variable of variables.values()) {
+    if (collections.some((c) => c.id === variable.variableCollectionId)) continue;
+    const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+    if (collection) {
+      collections.push({
+        id: collection.id,
+        name: collection.name,
+        modes: collection.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+        defaultModeId: collection.defaultModeId,
+        variableIds: [...collection.variableIds],
+        remote: true,
       });
     }
   }
-  return { collections: tokenCollections, tokens, variables };
+  return { savedAt: new Date().toISOString(), savedBy: figma.currentUser?.name, collections, variables: [...variables.values()] };
+}
+
+export function saveVariableSnapshot(snapshot: VariableSnapshot): void {
+  const json = JSON.stringify(snapshot);
+  const chunks = Math.ceil(json.length / CHUNK);
+  for (let i = 0; i < chunks; i++) {
+    figma.root.setSharedPluginData(PLUGIN_DATA_NAMESPACE, `${VARIABLES_KEY}:${i}`, json.slice(i * CHUNK, (i + 1) * CHUNK));
+  }
+  figma.root.setSharedPluginData(PLUGIN_DATA_NAMESPACE, `${VARIABLES_KEY}:count`, String(chunks));
 }
 
 async function extractTextStyles(): Promise<TextStyle[]> {
   const styles = await figma.getLocalTextStylesAsync();
-  return styles.map((style) => {
-    const lineHeight =
-      style.lineHeight.unit === "PIXELS"
-        ? style.lineHeight.value
-        : style.lineHeight.unit === "PERCENT"
-          ? `${Math.round(style.lineHeight.value)}%`
-          : "normal";
-    const letterSpacing =
-      style.letterSpacing.unit === "PIXELS"
-        ? Math.round(style.letterSpacing.value * 100) / 100
-        : `${Math.round(style.letterSpacing.value * 100) / 10000}em`;
-    const textCase: TextStyle["textCase"] =
-      style.textCase === "UPPER" ? "upper" : style.textCase === "LOWER" ? "lower" : style.textCase === "TITLE" ? "title" : "none";
-    return {
-      name: style.name,
+  return styles.map((style) =>
+    convertTextStyle(style.name, {
       fontFamily: style.fontName.family,
-      fontWeight: fontWeightFromStyle(style.fontName.style),
+      fontWeight: style.fontName.style,
       fontSize: style.fontSize,
-      lineHeight,
-      letterSpacing,
-      textCase,
-    };
-  });
+      lineHeight: style.lineHeight.unit === "AUTO" ? { unit: "AUTO" } : style.lineHeight,
+      letterSpacing: style.letterSpacing,
+      textCase: style.textCase,
+    }),
+  );
 }
 
 async function extractEffectStyles(): Promise<EffectStyle[]> {
-  const styles = await figma.getLocalEffectStylesAsync();
   const result: EffectStyle[] = [];
-  for (const style of styles) {
-    const shadows = style.effects
-      .filter((e): e is DropShadowEffect | InnerShadowEffect => (e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW") && e.visible)
-      .map((e) => {
-        const { r, g, b, a } = e.color;
-        const color = `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${Math.round(a * 100) / 100})`;
-        return `${e.type === "INNER_SHADOW" ? "inset " : ""}${e.offset.x}px ${e.offset.y}px ${e.radius}px ${e.spread ?? 0}px ${color}`;
-      });
-    if (shadows.length) result.push({ name: style.name, boxShadow: shadows.join(", ") });
+  for (const style of await figma.getLocalEffectStylesAsync()) {
+    const shadow = boxShadow(style.effects.filter((e): e is DropShadowEffect | InnerShadowEffect => e.type === "DROP_SHADOW" || e.type === "INNER_SHADOW"));
+    if (shadow) result.push({ name: style.name, boxShadow: shadow });
   }
   return result;
 }
@@ -322,7 +258,11 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
   const warnings: string[] = [];
   await figma.loadAllPagesAsync();
 
-  const { collections, tokens, variables } = await extractTokens(warnings);
+  const snapshot = await variableSnapshot();
+  saveVariableSnapshot(snapshot);
+  const converted = convertVariables(snapshot.collections, snapshot.variables);
+  warnings.push(...converted.warnings);
+  const { collections, tokens } = converted;
   const textStyles = await extractTextStyles();
   const effectStyles = await extractEffectStyles();
 
@@ -332,7 +272,7 @@ export async function extractDesignSystem(): Promise<ExtractResult> {
 
   const componentNames = new Map(nodes.map((n) => [n.key, splitComponentName(n.name).name]));
   const ctx: LayoutContext = {
-    variableNames: new Map([...variables].map(([id, v]) => [id, v.name])),
+    variableNames: converted.names,
     componentNames,
     textStyleNames: new Map((await figma.getLocalTextStylesAsync()).map((s) => [s.id, s.name])),
   };

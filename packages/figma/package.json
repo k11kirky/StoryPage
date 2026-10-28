@@ -1,0 +1,17 @@
+{
+  "name": "@storypage/figma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@storypage/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@figma/rest-api-spec": "^0.46.0"
+  }
+}

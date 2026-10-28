@@ -41,28 +41,34 @@
   </head>
   <body>
     <main>
-      <h1>Publish design system</h1>
+      <h1>StoryPage</h1>
       <p class="muted" id="file"></p>
 
       <section id="settings" hidden>
+        <p class="muted">Only needed for "Publish now". Your team's StoryPage admin can give you these.</p>
         <form id="settings-form" class="row" style="flex-direction: column; align-items: stretch; gap: 8px">
           <label>Gateway URL <input name="gatewayUrl" type="url" required placeholder="https://storypage-gateway.example.com" /></label>
           <label>Publish token <input name="token" type="password" required /></label>
-          <button class="primary" type="submit">Save</button>
+          <div class="row"><button class="primary" type="submit">Save</button><button type="reset">Back</button></div>
         </form>
       </section>
 
       <section id="scan" hidden>
         <div class="row">
-          <button class="primary" id="scan-button">Scan file</button>
-          <button id="edit-settings">Settings</button>
+          <button id="scan-button" class="small">Refresh</button>
+          <button id="edit-settings" class="small">Connection settings</button>
         </div>
       </section>
 
       <section id="picker" hidden>
         <p>
           Choose what developers and content editors get. Pick the <strong>page sections</strong> editors should
-          build pages from; the components they're made of come along automatically.
+          build pages from; the components they're made of come along automatically. Choices save as you go.
+        </p>
+        <p class="card" style="white-space: normal">
+          <strong>Then publish your library as usual</strong> (Assets → Publish library). StoryPage builds what
+          changed in Storybook and Contentful, using your publish description as the release notes, and posts
+          progress in Slack.
         </p>
         <div class="summary" id="summary"></div>
         <div class="row">
@@ -75,7 +81,11 @@
         </div>
         <p class="warning" id="picker-warnings"></p>
         <div id="components"></div>
-        <button class="primary" id="continue">Continue</button>
+        <details>
+          <summary>Publish without a library release</summary>
+          <p class="muted">For files that aren't published as a library. Needs the StoryPage connection settings.</p>
+          <button id="continue">Publish now…</button>
+        </details>
       </section>
 
       <section id="review" hidden>

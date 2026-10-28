@@ -45,6 +45,9 @@ importers:
       '@storypage/contentful':
         specifier: workspace:*
         version: link:../../packages/contentful
+      '@storypage/figma':
+        specifier: workspace:*
+        version: link:../../packages/figma
       '@storypage/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -54,6 +57,10 @@ importers:
       zod:
         specifier: ^4.1.0
         version: 4.6.7
+    devDependencies:
+      '@figma/rest-api-spec':
+        specifier: ^0.46.0
+        version: 0.46.0
 
   apps/pipeline:
     dependencies:
@@ -192,6 +199,16 @@ importers:
         specifier: ^7.1.0
         version: 7.3.7(@types/node@22.20.5)(tsx@4.23.15)
 
+  packages/figma:
+    dependencies:
+      '@storypage/schema':
+        specifier: workspace:*
+        version: link:../schema
+    devDependencies:
+      '@figma/rest-api-spec':
+        specifier: ^0.46.0
+        version: 0.46.0
+
   packages/schema:
     dependencies:
       semver:
@@ -201,6 +218,9 @@ importers:
         specifier: ^4.1.0
         version: 4.6.7
     devDependencies:
+      '@figma/rest-api-spec':
+        specifier: ^0.46.0
+        version: 0.46.0
       '@types/semver':
         specifier: ^7.7.0
         version: 7.8.0
@@ -745,6 +765,9 @@ packages:
 
   '@figma/rest-api-spec@0.37.0':
     resolution: {integrity: sha512-KKeCgSRiO2gajT/sKCAsn48ubl8NRbYqyIvfkk5+NPK2ar+DVuLKg3fl3/cR1WharC5Dg4V5a9JzDsYv04k50g==}
+
+  '@figma/rest-api-spec@0.46.0':
+    resolution: {integrity: sha512-X2dNNvix+9w6pRrBb4/OumuqK+DEHriBVWfdhPmmIyeDC0VnaMoZd14XBJK5SZXCeBnGxsRRaMidha8vsWKsFw==}
 
   '@hapi/address@5.1.1':
     resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
@@ -4053,6 +4076,8 @@ snapshots:
   '@figma/plugin-typings@1.142.0': {}
 
   '@figma/rest-api-spec@0.37.0': {}
+
+  '@figma/rest-api-spec@0.46.0': {}
 
   '@hapi/address@5.1.1':
     dependencies:

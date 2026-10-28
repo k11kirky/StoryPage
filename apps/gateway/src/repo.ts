@@ -13,6 +13,8 @@ export interface RepoStore {
   commitToNewBranch(branch: string, files: RepoFile[], message: string): Promise<string>;
   dispatch(eventType: string, payload: Record<string, unknown>): Promise<void>;
   actionsUrl(): string;
+  /** Opens a pull request from `branch` (or updates the open one) and returns its URL. */
+  openPullRequest(request: { branch: string; title: string; body: string; draft: boolean }): Promise<string>;
 }
 
 export interface GitHubConfig {
@@ -85,5 +87,15 @@ export class GitHubRepoStore implements RepoStore {
 
   actionsUrl(): string {
     return `https://github.com/${this.config.owner}/${this.config.repo}/actions`;
+  }
+
+  async openPullRequest({ branch, title, body, draft }: { branch: string; title: string; body: string; draft: boolean }): Promise<string> {
+    const { data: open } = await this.octokit.pulls.list({ ...this.repo, head: `${this.config.owner}:${branch}`, state: "open" });
+    if (open[0]) {
+      await this.octokit.pulls.update({ ...this.repo, pull_number: open[0].number, body });
+      return open[0].html_url;
+    }
+    const { data } = await this.octokit.pulls.create({ ...this.repo, head: branch, base: this.config.baseBranch, title, body, draft });
+    return data.html_url;
   }
 }

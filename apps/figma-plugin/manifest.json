@@ -1,5 +1,5 @@
 {
-  "name": "StoryPage Publisher",
+  "name": "StoryPage",
   "id": "storypage-publisher",
   "api": "1.0.0",
   "main": "dist/code.js",

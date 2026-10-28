@@ -16,6 +16,7 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
-    "@types/semver": "^7.7.0"
+    "@types/semver": "^7.7.0",
+    "@figma/rest-api-spec": "^0.46.0"
   }
 }

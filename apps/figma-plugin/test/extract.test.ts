@@ -80,7 +80,7 @@ function installFakeFigma() {
 
   (globalThis as unknown as { figma: unknown }).figma = {
     mixed: Symbol("mixed"),
-    root: { name: "Acme Design System", findAllWithCriteria: () => [button, hero, privateComponent] },
+    root: withPluginData({ id: "0:0", name: "Acme Design System", findAllWithCriteria: () => [button, hero, privateComponent] }),
     fileKey: "FILE123",
     currentUser: { id: "u1", name: "Dana Designer" },
     loadAllPagesAsync: async () => {},
@@ -161,6 +161,14 @@ describe("extractDesignSystem", () => {
     const scan = await extractDesignSystem();
     expect(scan.selections).toEqual({ "key-hero": { tier: "section", props: { body: { kind: "richText" } } } });
     expect(pluginData.get(`2:1/${SELECTION_KEY}`)).toContain('"tier":"section"');
+  });
+
+  it("saves a variables snapshot in the file for servers without the variables API", async () => {
+    await extractDesignSystem();
+    const json = Array.from({ length: Number(pluginData.get("0:0/variables:count")) }, (_, i) => pluginData.get(`0:0/variables:${i}`)).join("");
+    const snapshot = JSON.parse(json) as { collections: { name: string }[]; variables: { name: string }[] };
+    expect(snapshot.collections.map((c) => c.name)).toEqual(["Palette", "Color", "Spacing"]);
+    expect(snapshot.variables.map((v) => v.name)).toContain("color/brand/primary");
   });
 
   it("maps style names and colors", () => {
