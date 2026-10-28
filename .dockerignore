@@ -7,3 +7,4 @@ node_modules
 .git
 .env
 .env.*
+.storypage-e2e

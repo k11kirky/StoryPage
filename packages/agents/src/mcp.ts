@@ -110,7 +110,12 @@ export interface ContentfulMcpOptions {
   environment: string;
   /** Environments the server refuses to write to, e.g. the live alias and its target. */
   protectedEnvironments?: string[] | undefined;
+  /** API host when not api.contentful.com (the server only speaks HTTPS). */
+  host?: string | undefined;
 }
+
+/** Contentful's MCP server needs HTTPS, so it can't reach a plain-HTTP stand-in (see e2e/). */
+export const contentfulMcpReachable = (config: { insecure?: boolean | undefined }) => !config.insecure;
 
 export function contentfulServer(options: ContentfulMcpOptions): McpServerConfig {
   return {
@@ -121,6 +126,7 @@ export function contentfulServer(options: ContentfulMcpOptions): McpServerConfig
       CONTENTFUL_MANAGEMENT_ACCESS_TOKEN: options.managementToken,
       SPACE_ID: options.spaceId,
       ENVIRONMENT_ID: options.environment,
+      ...(options.host ? { CONTENTFUL_HOST: options.host } : {}),
       MAX_BULK_SIZE: "10",
       NODE_ENV: "production",
       ...(options.protectedEnvironments?.length ? { PROTECTED_ENVIRONMENTS: options.protectedEnvironments.join(",") } : {}),

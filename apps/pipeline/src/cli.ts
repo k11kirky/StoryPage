@@ -169,7 +169,7 @@ async function build() {
       verify,
       costs,
       figmaNote,
-      changedFiles: spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).stdout.trim(),
+      changedFiles: spawnSync("git", ["status", "--porcelain"], { cwd: repoRoot, encoding: "utf8" }).stdout.trimEnd(),
     }),
   );
   console.log(JSON.stringify(release, null, 2));

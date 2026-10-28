@@ -36,6 +36,10 @@ const NO_FIGMA = `figma: not connected in this run. Work from the plan's Figma l
 
 /** Figma MCP for a stage, in whichever mode is configured (official by default). */
 export function figmaAccess(repoRoot: string, log: (line: string) => void): FigmaAccess {
+  if (process.env.FIGMA_MCP === "off") {
+    log("Figma MCP turned off (FIGMA_MCP=off); agents will use the manifest only.");
+    return { mode: null, servers: {}, tools: [], checks: {}, guide: NO_FIGMA };
+  }
   let options;
   try {
     options = figmaOptionsFromEnv();

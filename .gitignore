@@ -8,3 +8,4 @@ storybook-static/
 .DS_Store
 .storypage/
 .storypage-worker/
+.storypage-e2e/

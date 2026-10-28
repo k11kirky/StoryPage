@@ -80,14 +80,25 @@ describe("Figma's Publish library → release", () => {
     expect(notifier.messages[0]).toMatch(/no components are set up for StoryPage yet\. Open the StoryPage plugin/);
   });
 
-  it("won't build with stale variable values on plans without the variables API", async () => {
+  it("won't build with variable values saved before the last release on plans without the variables API", async () => {
     const { repo, notifier, releases } = setup();
+    // The seed release was published on 2026-10-27.
     await releases.publishLibrary(
+      libraryPublish({ modified_variables: [{ key: "k2", name: "color/brand/primary" }] }),
+      fakeFigma({ enterprise: false, snapshot: true, savedAt: "2026-10-26T09:00:00Z" }),
+    );
+    expect(repo.branches.size).toBe(0);
+    expect(notifier.messages[0]).toMatch(/saved variable values are from 2026-10-26, before the last release\. Open the StoryPage plugin/);
+  });
+
+  it("builds variable changes from a snapshot saved since the last release", async () => {
+    const { repo, releases } = setup();
+    const result = await releases.publishLibrary(
       libraryPublish({ modified_variables: [{ key: "k2", name: "color/brand/primary" }] }),
       fakeFigma({ enterprise: false, snapshot: true }),
     );
-    expect(repo.branches.size).toBe(0);
-    expect(notifier.messages[0]).toMatch(/saved variable values are from 2026-10-28\. Open the StoryPage plugin/);
+    expect(result?.version).toBe("2.0.0");
+    expect(repo.branches.has("design-system/v2.0.0")).toBe(true);
   });
 
   it("checks the passcode and only builds the configured library", async () => {

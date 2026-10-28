@@ -81,7 +81,8 @@ export class LocalRunner implements Runner {
     this.commands = { ...DEFAULT_COMMANDS, ...options.commands };
     this.checkout = path.join(options.workDir, "repo");
     this.log = options.log ?? ((line) => console.log(`[runner] ${line}`));
-    mkdirSync(options.workDir, { recursive: true });
+    // Exists before the first release, so the gateway can serve it from the start.
+    mkdirSync(this.storybookDir, { recursive: true });
   }
 
   /** Where the hosted Storybook is served from (see the gateway's /storybook route). */

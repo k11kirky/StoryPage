@@ -1,5 +1,6 @@
 import {
   CONTENTFUL,
+  contentfulMcpReachable,
   contentfulScope,
   contentfulServer,
   CONTENTFUL_READ_TOOLS,
@@ -69,6 +70,7 @@ export async function compose(ctx: ComposeContext, sessionId: string | undefined
     },
   });
 
+  const contentfulMcp = contentfulMcpReachable(ctx.config);
   const result = await runStage({
     name: "compose",
     persona: "custom",
@@ -78,15 +80,20 @@ export async function compose(ctx: ComposeContext, sessionId: string | undefined
     resume: sessionId,
     mcpServers: {
       [PIPELINE]: pages.server,
-      [CONTENTFUL]: contentfulServer({
-        managementToken: ctx.config.managementToken,
-        spaceId: ctx.config.spaceId,
-        environment: ctx.config.environment,
-        protectedEnvironments: [ctx.config.environment, ...(ctx.release.environment ? [ctx.release.environment] : [])],
-      }),
+      ...(contentfulMcp
+        ? {
+            [CONTENTFUL]: contentfulServer({
+              managementToken: ctx.config.managementToken,
+              spaceId: ctx.config.spaceId,
+              environment: ctx.config.environment,
+              host: ctx.config.host,
+              protectedEnvironments: [ctx.config.environment, ...(ctx.release.environment ? [ctx.release.environment] : [])],
+            }),
+          }
+        : {}),
       ...(ctx.storybookDocsUrl ? { [STORYBOOK]: storybookServer(ctx.storybookDocsUrl) } : {}),
     },
-    tools: [...Object.values(PAGE_TOOLS), ...CONTENTFUL_READ_TOOLS, ...(ctx.storybookDocsUrl ? STORYBOOK_DOCS_TOOLS : [])],
+    tools: [...Object.values(PAGE_TOOLS), ...(contentfulMcp ? CONTENTFUL_READ_TOOLS : []), ...(ctx.storybookDocsUrl ? STORYBOOK_DOCS_TOOLS : [])],
     checks: contentfulScope(ctx.config.spaceId, ctx.config.environment),
     ...(ctx.model ? { model: ctx.model } : {}),
     // Medium keeps Slack replies quick; raise it if page quality needs it.

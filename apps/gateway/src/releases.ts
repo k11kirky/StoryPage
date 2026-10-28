@@ -123,16 +123,19 @@ export class ReleaseService {
         );
         return null;
       }
+      const previous = await this.currentManifest();
+      // Without the variables API, values come from the snapshot the plugin saves while it's open.
+      // A snapshot from before the last release can't contain this publish's variable changes.
       const variablesChanged = event.created_variables.length + event.modified_variables.length + event.deleted_variables.length > 0;
-      if (scan.variablesSource === "snapshot" && variablesChanged && scan.variablesSavedAt && scan.variablesSavedAt < event.timestamp) {
+      const savedAt = scan.variablesSavedAt;
+      if (scan.variablesSource === "snapshot" && variablesChanged && savedAt && previous && savedAt < previous.publishedAt) {
         await this.notifier.send(
-          `${who} published *${event.file_name}* with variable changes, but StoryPage's saved variable values are from ${scan.variablesSavedAt.slice(0, 10)}. ` +
+          `${who} published *${event.file_name}* with variable changes, but StoryPage's saved variable values are from ${savedAt.slice(0, 10)}, before the last release. ` +
             "Open the StoryPage plugin in the file once (it saves them), then publish the library again.",
         );
         return null;
       }
 
-      const previous = await this.currentManifest();
       const draft = {
         ...scan.manifest,
         components: resolved.components,

@@ -108,6 +108,40 @@ importers:
         specifier: ^4.1.0
         version: 4.6.7
 
+  e2e:
+    dependencies:
+      '@hono/node-server':
+        specifier: ^1.19.0
+        version: 1.19.17(hono@4.13.14)
+      '@storypage/agents':
+        specifier: workspace:*
+        version: link:../packages/agents
+      '@storypage/contentful':
+        specifier: workspace:*
+        version: link:../packages/contentful
+      '@storypage/figma':
+        specifier: workspace:*
+        version: link:../packages/figma
+      '@storypage/gateway':
+        specifier: workspace:*
+        version: link:../apps/gateway
+      '@storypage/schema':
+        specifier: workspace:*
+        version: link:../packages/schema
+      '@storypage/slack-bot':
+        specifier: workspace:*
+        version: link:../apps/slack-bot
+      hono:
+        specifier: ^4.9.0
+        version: 4.13.14
+      playwright-core:
+        specifier: ~1.63.0
+        version: 1.63.0
+    devDependencies:
+      '@figma/rest-api-spec':
+        specifier: ^0.46.0
+        version: 0.46.0
+
   packages/agents:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':

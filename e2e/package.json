@@ -1,0 +1,26 @@
+{
+  "name": "@storypage/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e": "tsx src/run.ts",
+    "doctor": "tsx src/doctor.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.0",
+    "@storypage/agents": "workspace:*",
+    "@storypage/contentful": "workspace:*",
+    "@storypage/figma": "workspace:*",
+    "@storypage/gateway": "workspace:*",
+    "@storypage/schema": "workspace:*",
+    "@storypage/slack-bot": "workspace:*",
+    "hono": "^4.9.0",
+    "playwright-core": "~1.63.0"
+  },
+  "devDependencies": {
+    "@figma/rest-api-spec": "^0.46.0"
+  }
+}

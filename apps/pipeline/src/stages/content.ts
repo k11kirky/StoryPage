@@ -1,6 +1,7 @@
 import {
   CONTENT_TOOLS,
   CONTENTFUL,
+  contentfulMcpReachable,
   contentfulServer,
   CONTENTFUL_ENTRY_EDIT_TOOLS,
   CONTENTFUL_READ_TOOLS,
@@ -85,6 +86,8 @@ export async function runContentStage(
     registry: options.registry,
     promote: options.promote,
   });
+  const contentfulMcp = contentfulMcpReachable(options.config);
+  if (!contentfulMcp) log("Contentful MCP needs HTTPS; running with the pipeline tools only");
   const result = await runStage({
     name: "content",
     cwd: options.repoRoot,
@@ -92,22 +95,26 @@ export async function runContentStage(
     prompt: `Release design-system ${options.registry.version} to Contentful.${options.promote.changelog ? ` Changelog: ${options.promote.changelog}` : ""}`,
     mcpServers: {
       [PIPELINE]: pipeline.server,
-      [CONTENTFUL]: contentfulServer({
-        managementToken: options.config.managementToken,
-        spaceId: options.config.spaceId,
-        environment: options.target.environment,
-        // With the alias strategy the live environment is read-only to the agent.
-        protectedEnvironments:
-          options.target.strategy === "alias" && options.target.environment !== options.target.previousEnvironment
-            ? [options.config.environment, ...(options.target.previousEnvironment ? [options.target.previousEnvironment] : [])]
-            : [],
-      }),
+      ...(contentfulMcp
+        ? {
+            [CONTENTFUL]: contentfulServer({
+              managementToken: options.config.managementToken,
+              spaceId: options.config.spaceId,
+              environment: options.target.environment,
+              host: options.config.host,
+              // With the alias strategy the live environment is read-only to the agent.
+              protectedEnvironments:
+                options.target.strategy === "alias" && options.target.environment !== options.target.previousEnvironment
+                  ? [options.config.environment, ...(options.target.previousEnvironment ? [options.target.previousEnvironment] : [])]
+                  : [],
+            }),
+          }
+        : {}),
       ...(options.storybookDocsUrl ? { [STORYBOOK]: storybookServer(options.storybookDocsUrl) } : {}),
     },
     tools: [
       ...Object.values(CONTENT_TOOLS),
-      ...CONTENTFUL_READ_TOOLS,
-      ...CONTENTFUL_ENTRY_EDIT_TOOLS,
+      ...(contentfulMcp ? [...CONTENTFUL_READ_TOOLS, ...CONTENTFUL_ENTRY_EDIT_TOOLS] : []),
       ...(options.storybookDocsUrl ? STORYBOOK_DOCS_TOOLS : []),
     ],
     checks: contentfulScope(options.config.spaceId, options.target.environment),

@@ -224,5 +224,6 @@ Agents run unattended on untrusted input: manifests are designer-authored, Slack
   - `official` (the default) is Figma's remote server. It has no token login, only OAuth from approved clients, and the Agent SDK qualifies because it runs Claude Code. `pipeline figma-connect` signs in once, and Claude Code stores the grant in `CLAUDE_CONFIG_DIR`, keyed by server name, type, URL and headers, so the agents' `figma` server config reuses it. The machine running the agents must keep that directory, which means a self-hosted runner or another persistent worker.
   - `framelink` uses a personal access token and works on ephemeral runners.
   - `url` points at another server with Figma's tools, such as the Dev Mode server in the desktop app.
+  - `off` runs without Figma; agents work from the manifest's layout tree and preview images (the e2e harness uses this, since its Figma file is a stand-in).
 
   Every stage records whether Figma connected, and the PR says when it didn't.

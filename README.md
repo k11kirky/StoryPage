@@ -48,6 +48,7 @@ The steps that must be exact are deterministic code the agents call as tools: to
 | `apps/figma-plugin` | Figma plugin where designers choose what each component becomes; saves the choices (and variable values) in the file. |
 | `apps/gateway` | Small HTTP service: receives Figma's library-publish webhook (and the plugin's optional publish), commits manifests, starts the build on GitHub Actions or its own hosted runner, serves signed draft previews and the hosted Storybook. |
 | `apps/slack-bot` | Slack app running the composer agent. |
+| `e2e` | The end-to-end run (`pnpm e2e`) with local stand-ins for Figma, GitHub and Contentful, and `pnpm e2e:doctor` for checking a real setup. |
 | `.github/workflows` | CI, the build stage (`design-system-build.yml`) and the release stage (`design-system-release.yml`), for the open-source setup. |
 | `Dockerfile` | The hosted setup: gateway plus a runner that runs the same stages itself. |
 
@@ -60,6 +61,15 @@ pnpm install
 pnpm test                                        # unit tests plus an end-to-end Agent SDK session against a scripted model
 pnpm --filter @storypage/design-system storybook # http://localhost:6006
 ```
+
+To run the whole flow (Figma publish → pull request → merge → Storybook and Contentful release → Slack draft → preview) on your machine without any accounts:
+
+```bash
+pnpm e2e            # report, PR body, logs and a preview screenshot in .storypage-e2e/
+pnpm e2e --serve    # then keep it running to click around
+```
+
+See [docs/testing.md](docs/testing.md) for what it covers, `--with-agents`, and a checklist for a live run on real services.
 
 The repo ships with a seed design system (`manifests/1.0.0.json`: tokens, `Button`, `FeatureCard`, `Hero`, `FeatureGrid`, `RichTextSection`) so every stage works before the first Figma publish.
 
@@ -128,7 +138,7 @@ No persistent machine? Use GitHub-hosted runners with `FIGMA_MCP=framelink` and 
 |------|------|---------|
 | Secret | `ANTHROPIC_API_KEY` | Build, review and content agents |
 | Variable | `STORYPAGE_AGENT_RUNNER`, `STORYPAGE_CLAUDE_CONFIG_DIR` | Self-hosted runner label and its persistent Claude config directory, for Figma's official MCP server |
-| Variable | `FIGMA_MCP` (optional) | `official` (default), `framelink`, or `url` with `FIGMA_MCP_URL` |
+| Variable | `FIGMA_MCP` (optional) | `official` (default), `framelink`, `url` with `FIGMA_MCP_URL`, or `off` (agents work from the manifest only) |
 | Secret | `FIGMA_API_KEY` (only for `framelink`) | Figma personal access token with file read access |
 | Secret | `STORYPAGE_BOT_TOKEN` (optional) | Pushing and opening the release PR. A PAT/App token lets the PR trigger CI; PRs opened with `GITHUB_TOKEN` don't. |
 | Secret | `CONTENTFUL_MANAGEMENT_TOKEN` | Contentful sync |

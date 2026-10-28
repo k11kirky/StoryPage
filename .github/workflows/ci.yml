@@ -26,3 +26,27 @@ jobs:
         run: pnpm --filter @storypage/design-system build-storybook --quiet
       - name: Build Figma plugin
         run: pnpm --filter @storypage/figma-plugin build
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Install Chromium for the preview check
+        run: pnpm --filter @storypage/e2e exec playwright-core install --with-deps chromium
+      - name: End-to-end run (local stand-ins for Figma, GitHub and Contentful)
+        run: pnpm e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-report
+          path: |
+            .storypage-e2e/*/report.md
+            .storypage-e2e/*/pull-request.md
+            .storypage-e2e/*/preview.png
+            .storypage-e2e/*/*.log

@@ -36,8 +36,8 @@ const variant = (id: string, name: string) => ({
   children: [{ id: `${id}-label`, name: "Label", type: "TEXT", characters: "Get started", styles: { text: "S:label" } }],
 });
 
-export function file(withSnapshot: boolean) {
-  const snapshot = JSON.stringify({ savedAt: "2026-10-28T10:00:00Z", collections: Object.values(collections), variables: Object.values(variables) });
+export function file(withSnapshot: boolean, savedAt = "2026-10-28T10:00:00Z") {
+  const snapshot = JSON.stringify({ savedAt, collections: Object.values(collections), variables: Object.values(variables) });
   return {
     name: "Acme Design System",
     version: "1",
@@ -94,12 +94,12 @@ export function file(withSnapshot: boolean) {
   };
 }
 
-export function fakeFigma(options: { enterprise: boolean; snapshot: boolean; selections?: boolean }) {
+export function fakeFigma(options: { enterprise: boolean; snapshot: boolean; selections?: boolean; savedAt?: string }) {
   const fetchImpl = async (input: string | URL | Request) => {
     const url = new URL(String(input));
     const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
     if (url.pathname === `/v1/files/${KEY}`) {
-      const body = file(options.snapshot);
+      const body = file(options.snapshot, options.savedAt);
       if (options.selections === false) delete (body.document.children[0]!.children[1] as { sharedPluginData?: unknown }).sharedPluginData;
       return json(body);
     }
